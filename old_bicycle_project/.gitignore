@@ -31,8 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
-
-### Environment / Secrets ###
-.env
-.env.*
-application-local.properties
+.agent
+.kilocode
+.codex
+.agents
