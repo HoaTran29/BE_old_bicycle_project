@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
@@ -35,7 +36,44 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
+    /**
+     * Filter chain 1: Public endpoints — KHÔNG cần xác thực
+     */
     @Bean
+    @Order(1)
+    public SecurityFilterChain publicFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatchers(matchers -> matchers.requestMatchers(
+                        // Auth public
+                        "/api/auth/register",
+                        "/api/auth/login",
+                        "/api/auth/refresh",
+                        "/api/auth/verify-email",
+                        // Swagger UI
+                        "/swagger-ui/**",
+                        "/swagger-ui.html",
+                        "/v3/api-docs/**",
+                        // OAuth2
+                        "/oauth2/**",
+                        "/login/oauth2/**"
+                ))
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .authorizeHttpRequests(auth -> auth
+                        .anyRequest().permitAll()
+                );
+
+        return http.build();
+    }
+
+    /**
+     * Filter chain 2: Protected endpoints — cần JWT hoặc OAuth2
+     */
+    @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -44,24 +82,7 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        // ===== Swagger UI =====
-                        .requestMatchers(
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/v3/api-docs/**"
-                        ).permitAll()
-
-                        // ===== Public endpoints =====
-                        .requestMatchers(
-                                "/api/auth/register",
-                                "/api/auth/login",
-                                "/api/auth/refresh",
-                                "/api/auth/verify-email",
-                                "/oauth2/**",
-                                "/login/oauth2/**"
-                        ).permitAll()
-
-                        // ===== Product public endpoints =====
+                        // ===== Product public endpoints (GET only) =====
                         .requestMatchers(HttpMethod.GET,
                                 "/api/products",
                                 "/api/products/*",
@@ -102,7 +123,9 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                             response.setContentType("application/json;charset=UTF-8");
-                            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Bạn cần đăng nhập để truy cập API này\"}");
+                            response.getWriter().write(
+                                    "{\"error\":\"Unauthorized\",\"message\":\"Bạn cần đăng nhập để truy cập API này\"}"
+                            );
                         })
                 )
                 .authenticationProvider(authenticationProvider())
