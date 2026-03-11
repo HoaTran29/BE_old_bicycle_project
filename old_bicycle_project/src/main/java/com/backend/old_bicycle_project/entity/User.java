@@ -60,6 +60,14 @@ public class User implements UserDetails {
     @Builder.Default
     private UserStatus status = UserStatus.active;
 
+    @Column(name = "average_rating")
+    @Builder.Default
+    private Double averageRating = 0.0;
+
+    @Column(name = "total_reviews")
+    @Builder.Default
+    private Integer totalReviews = 0;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -112,5 +120,13 @@ public class User implements UserDetails {
     @Override
     public boolean isEnabled() {
         return status == UserStatus.active;
+    }
+
+    // Helper method
+    public String getFullName() {
+        if (firstName == null && lastName == null) return "Unknown";
+        if (firstName == null) return lastName;
+        if (lastName == null) return firstName;
+        return firstName + " " + lastName;
     }
 }

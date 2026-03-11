@@ -9,12 +9,11 @@ import com.backend.old_bicycle_project.repository.FrameMaterialRepository;
 import com.backend.old_bicycle_project.service.BrandService;
 import com.backend.old_bicycle_project.service.CategoryService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import com.backend.old_bicycle_project.dto.response.ApiResponse;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -29,64 +28,80 @@ public class ReferenceDataController {
     // ==================== BRANDS ====================
 
     @GetMapping("/api/brands")
-    public ResponseEntity<List<Brand>> getAllBrands() {
-        return ResponseEntity.ok(brandService.getAll());
+    public ApiResponse<List<Brand>> getAllBrands() {
+        return ApiResponse.<List<Brand>>builder()
+                .result(brandService.getAll())
+                .build();
     }
 
     @PostMapping("/api/admin/brands")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Brand> createBrand(
+    public ApiResponse<Brand> createBrand(
             @RequestParam String name,
             @RequestParam(required = false) String logoUrl
     ) {
-        return ResponseEntity.ok(brandService.create(name, logoUrl));
+        return ApiResponse.<Brand>builder()
+                .result(brandService.create(name, logoUrl))
+                .build();
     }
 
     @PutMapping("/api/admin/brands/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Brand> updateBrand(
+    public ApiResponse<Brand> updateBrand(
             @PathVariable UUID id,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String logoUrl
     ) {
-        return ResponseEntity.ok(brandService.update(id, name, logoUrl));
+        return ApiResponse.<Brand>builder()
+                .result(brandService.update(id, name, logoUrl))
+                .build();
     }
 
     @DeleteMapping("/api/admin/brands/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, String>> deleteBrand(@PathVariable UUID id) {
+    public ApiResponse<String> deleteBrand(@PathVariable UUID id) {
         brandService.delete(id);
-        return ResponseEntity.ok(Map.of("message", "Đã xóa hãng xe"));
+        return ApiResponse.<String>builder()
+                .result("Đã xóa hãng xe")
+                .build();
     }
 
     // ==================== CATEGORIES ====================
 
     @GetMapping("/api/categories")
-    public ResponseEntity<List<Category>> getAllCategories() {
-        return ResponseEntity.ok(categoryService.getAll());
+    public ApiResponse<List<Category>> getAllCategories() {
+        return ApiResponse.<List<Category>>builder()
+                .result(categoryService.getAll())
+                .build();
     }
 
     @PostMapping("/api/admin/categories")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Category> createCategory(
+    public ApiResponse<Category> createCategory(
             @RequestParam String name,
             @RequestParam String slug,
             @RequestParam(required = false) UUID parentId
     ) {
-        return ResponseEntity.ok(categoryService.create(name, slug, parentId));
+        return ApiResponse.<Category>builder()
+                .result(categoryService.create(name, slug, parentId))
+                .build();
     }
 
     // ==================== BRAKE TYPES ====================
 
     @GetMapping("/api/brake-types")
-    public ResponseEntity<List<BrakeType>> getAllBrakeTypes() {
-        return ResponseEntity.ok(brakeTypeRepository.findAll());
+    public ApiResponse<List<BrakeType>> getAllBrakeTypes() {
+        return ApiResponse.<List<BrakeType>>builder()
+                .result(brakeTypeRepository.findAll())
+                .build();
     }
 
     // ==================== FRAME MATERIALS ====================
 
     @GetMapping("/api/frame-materials")
-    public ResponseEntity<List<FrameMaterial>> getAllFrameMaterials() {
-        return ResponseEntity.ok(frameMaterialRepository.findAll());
+    public ApiResponse<List<FrameMaterial>> getAllFrameMaterials() {
+        return ApiResponse.<List<FrameMaterial>>builder()
+                .result(frameMaterialRepository.findAll())
+                .build();
     }
 }

@@ -5,12 +5,9 @@ import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
+import com.backend.old_bicycle_project.dto.response.ApiResponse;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -24,10 +21,11 @@ public class AuthController {
      * Đăng ký tài khoản mới (buyer hoặc seller)
      */
     @PostMapping("/register")
-    public ResponseEntity<Map<String, String>> register(@Valid @RequestBody RegisterRequest request) {
+    public ApiResponse<String> register(@Valid @RequestBody RegisterRequest request) {
         String message = authService.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(Map.of("message", message));
+        return ApiResponse.<String>builder()
+                .result(message)
+                .build();
     }
 
     /**
@@ -35,8 +33,10 @@ public class AuthController {
      * Đăng nhập → trả về access token & refresh token
      */
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        return ApiResponse.<AuthResponse>builder()
+                .result(authService.login(request))
+                .build();
     }
 
     /**
@@ -44,8 +44,10 @@ public class AuthController {
      * Lấy access token mới từ refresh token
      */
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
-        return ResponseEntity.ok(authService.refreshToken(request));
+    public ApiResponse<AuthResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+        return ApiResponse.<AuthResponse>builder()
+                .result(authService.refreshToken(request))
+                .build();
     }
 
     /**
@@ -54,9 +56,11 @@ public class AuthController {
      * Yêu cầu: Authorization: Bearer <access_token>
      */
     @PostMapping("/logout")
-    public ResponseEntity<Map<String, String>> logout(@AuthenticationPrincipal User currentUser) {
+    public ApiResponse<String> logout(@AuthenticationPrincipal User currentUser) {
         authService.logout(currentUser);
-        return ResponseEntity.ok(Map.of("message", "Đăng xuất thành công"));
+        return ApiResponse.<String>builder()
+                .result("Đăng xuất thành công")
+                .build();
     }
 
     /**
@@ -64,9 +68,11 @@ public class AuthController {
      * Xác thực email từ link gửi trong mail
      */
     @GetMapping("/verify-email")
-    public ResponseEntity<Map<String, String>> verifyEmail(@RequestParam String token) {
+    public ApiResponse<String> verifyEmail(@RequestParam String token) {
         String message = authService.verifyEmail(token);
-        return ResponseEntity.ok(Map.of("message", message));
+        return ApiResponse.<String>builder()
+                .result(message)
+                .build();
     }
 
     /**
@@ -75,7 +81,9 @@ public class AuthController {
      * Yêu cầu: Authorization: Bearer <access_token>
      */
     @GetMapping("/me")
-    public ResponseEntity<AuthResponse.UserInfo> getCurrentUser(@AuthenticationPrincipal User currentUser) {
-        return ResponseEntity.ok(authService.getCurrentUser(currentUser));
+    public ApiResponse<AuthResponse.UserInfo> getCurrentUser(@AuthenticationPrincipal User currentUser) {
+        return ApiResponse.<AuthResponse.UserInfo>builder()
+                .result(authService.getCurrentUser(currentUser))
+                .build();
     }
 }
