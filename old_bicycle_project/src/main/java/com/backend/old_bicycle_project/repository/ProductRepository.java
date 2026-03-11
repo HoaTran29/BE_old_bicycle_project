@@ -21,4 +21,6 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
     @Query("SELECT COUNT(p) FROM Product p WHERE p.seller.id = :sellerId")
     long countBySellerId(@Param("sellerId") UUID sellerId);
+
+    long countByStatus(ProductStatus status);
 }
