@@ -2,78 +2,214 @@
 
 ## Mục tiêu của tài liệu này
 
-Tài liệu này giải thích những kiến thức quan trọng đã được áp dụng khi sửa backend của dự án Old Bicycles Marketplace. Nội dung được viết cho người mới học lập trình, ưu tiên dễ hiểu và bám sát đúng những gì vừa được làm trong code.
+Tài liệu này giải thích những kiến thức quan trọng đã được dùng trong lần sửa backend gần đây của dự án Old Bicycles Marketplace.
+
+Cách viết của tài liệu này hướng tới:
+
+- sinh viên năm nhất mới học lập trình
+- người đã biết rất cơ bản về biến, hàm, class, API, request, response
+- người muốn hiểu không chỉ "đã sửa gì" mà còn "vì sao phải sửa như vậy"
+
+Tài liệu này không cố gắng dạy hết backend. Mục tiêu của nó là giúp bạn hiểu rõ những ý quan trọng vừa xuất hiện trong project.
+
+## Cách đọc tài liệu này
+
+Mỗi phần sẽ cố gắng đi theo cùng một thứ tự:
+
+1. Bối cảnh hoặc vấn đề
+2. Định nghĩa
+3. Ví dụ đơn giản
+4. Cách áp dụng trong project
+5. Lỗi hiểu sai thường gặp
+
+Nếu bạn mới học, hãy đọc chậm và ưu tiên hiểu từng khái niệm một.
+
+---
 
 ## 1. Vì sao không nên nhận `userId` trực tiếp từ request
 
-Khi một API nhận `userId` từ query, path, hoặc body, client có thể cố tình thay bằng ID của người khác. Nếu backend tin vào giá trị đó, người dùng A có thể đọc hoặc sửa dữ liệu của người dùng B.
+### Bối cảnh
 
-Ví dụ xấu:
+Trước khi sửa, một số API nhận các giá trị như:
+
+- `userId`
+- `sellerId`
+- `inspectorId`
+- `reviewerId`
+- `reporterId`
+
+trực tiếp từ URL, query param, hoặc body.
+
+Điều này nhìn qua có vẻ tiện, nhưng thật ra rất nguy hiểm.
+
+### Định nghĩa
+
+`request` là dữ liệu do phía client gửi lên server.
+
+Ví dụ:
+
+- URL
+- query string
+- JSON body
+- form data
+
+Nếu backend tin hoàn toàn vào dữ liệu do client gửi lên, thì client có thể giả mạo dữ liệu đó.
+
+### Ví dụ đơn giản
+
+Giả sử có API:
 
 ```http
-GET /api/notifications/user/{userId}
+GET /api/notifications/user/123
 ```
 
-Nếu backend chỉ lấy `userId` từ URL, thì ai cũng có thể thử ID của người khác.
+Nếu backend chỉ nhìn số `123` và trả dữ liệu tương ứng, thì người dùng có thể thử đổi thành:
+
+```http
+GET /api/notifications/user/999
+```
+
+Nếu `999` là ID của người khác, dữ liệu của người khác có thể bị lộ.
 
 ### Cách làm đúng hơn
 
-Backend nên lấy người dùng hiện tại từ phiên đăng nhập hoặc JWT đã được Spring Security xác thực.
+Nếu hệ thống đã có đăng nhập bằng JWT hoặc session, thì backend nên lấy người dùng hiện tại từ thông tin xác thực đã được kiểm tra sẵn.
 
-Trong dự án này, `User` đã implement `UserDetails`, nên controller có thể dùng:
+Trong Spring Security, điều này thường được làm bằng:
 
 ```java
 @AuthenticationPrincipal User currentUser
 ```
 
-Sau đó truyền `currentUser.getId()` xuống service.
+Ý nghĩa rất đơn giản:
 
-### Đã áp dụng vào đâu
+- client gửi token
+- Spring Security kiểm tra token
+- nếu token hợp lệ, Spring biết người đang đăng nhập là ai
+- controller chỉ cần lấy `currentUser`
+
+Sau đó backend dùng:
+
+```java
+currentUser.getId()
+```
+
+thay vì tin vào ID mà client tự gửi.
+
+### Đã áp dụng trong project này như thế nào
+
+Trong lần sửa này, các API sau đã được đổi sang lấy user hiện tại từ `@AuthenticationPrincipal`:
 
 - `NotificationController`
 - `InspectionController`
 - `ReviewController`
 - `ReportController`
-- REST endpoints trong `ChatController`
+- các REST endpoint trong `ChatController`
 
-Kết quả là nhiều endpoint không còn tin vào `userId`, `sellerId`, `inspectorId`, `reviewerId`, `reporterId` do client tự gửi lên nữa.
+Nói ngắn gọn: backend bớt tin vào dữ liệu tự khai của client, và tin vào hệ thống xác thực hơn.
+
+### Lỗi hiểu sai thường gặp
+
+Hiểu sai 1:
+"Client của mình là app do mình viết, nên chắc nó sẽ không gửi sai."
+
+Sai vì:
+
+- client luôn có thể bị sửa
+- request luôn có thể bị giả lập bằng Postman, curl, script
+- backend phải tự bảo vệ mình
+
+Hiểu sai 2:
+"Có đăng nhập rồi thì nhận thêm `userId` cũng không sao."
+
+Sai vì:
+
+- nếu đã biết người dùng hiện tại là ai, thì nhận thêm `userId` thường chỉ làm tăng rủi ro
+
+---
 
 ## 2. Ownership check là gì
 
-Ownership check là kiểm tra xem người đang gọi API có thực sự sở hữu tài nguyên hoặc có quyền thao tác với tài nguyên đó hay không.
+### Bối cảnh
+
+Ngay cả khi đã biết người dùng hiện tại là ai, backend vẫn cần kiểm tra xem người đó có quyền thao tác lên dữ liệu cụ thể hay không.
 
 Ví dụ:
 
-- Chỉ seller của sản phẩm mới được xác nhận đơn.
-- Chỉ buyer của order mới được review seller.
-- Chỉ người nhận notification mới được đánh dấu notification đó là đã đọc.
+- bạn đã đăng nhập, nhưng không có nghĩa là bạn được sửa đơn hàng của người khác
+- bạn đã đăng nhập, nhưng không có nghĩa là bạn được đọc tin nhắn trong cuộc trò chuyện không phải của mình
 
-### Đã áp dụng vào đâu
+### Định nghĩa
 
-- Notification đọc 1 item: service kiểm tra `notificationId` có thuộc `currentUser` hay không.
-- Chat messages: service kiểm tra người đang đọc tin nhắn có phải là buyer hoặc seller trong conversation hay không.
-- Review: reviewer phải đúng là buyer của order.
-- Order: chỉ seller hoặc admin mới được `confirm-deposit` và `complete`.
+`ownership check` có thể hiểu đơn giản là:
 
-## 3. Vì sao phải đồng bộ enum Java với enum trong PostgreSQL
+"Kiểm tra xem tài nguyên này có thuộc về người đang thao tác hay không."
 
-Trong dự án này, database dùng enum PostgreSQL như:
+`resource` là tài nguyên trong hệ thống, ví dụ:
 
-- `pending`
-- `deposited`
-- `completed`
+- notification
+- product
+- order
+- conversation
+- review
 
-Nhưng code Java trước đó lại dùng:
+### Ví dụ đơn giản
 
-- `PENDING`
-- `DEPOSITED`
-- `COMPLETED`
+Giả sử có notification với ID `A1`.
 
-Điều này dễ gây lỗi khi JPA ghi dữ liệu xuống database, vì giá trị Java và giá trị enum trong database không trùng nhau.
+Backend cần kiểm tra:
 
-### Cách sửa đã dùng
+- notification `A1` có thuộc về user hiện tại không?
 
-Thay các enum Java sang dạng lowercase để khớp với database:
+Nếu có thì cho phép đánh dấu là đã đọc.
+Nếu không thì từ chối.
+
+### Ví dụ ngoài đời thường
+
+Ownership check giống như việc kiểm tra:
+
+- đây có phải chìa khóa xe của bạn không?
+- đây có phải tài khoản ngân hàng của bạn không?
+
+Không phải cứ là "người đã vào được tòa nhà" thì muốn mở phòng nào cũng được.
+
+### Đã áp dụng trong project này như thế nào
+
+Trong lần sửa này:
+
+- Notification: chỉ người nhận notification mới được đánh dấu notification đó là đã đọc
+- Review: chỉ buyer của order mới được gửi review cho order đó
+- Chat: chỉ buyer hoặc seller trong conversation mới được đọc và đánh dấu tin nhắn là đã đọc
+- Order: chỉ seller hoặc admin mới được xác nhận đặt cọc và hoàn tất đơn
+
+### Lỗi hiểu sai thường gặp
+
+Hiểu sai:
+"Chỉ cần kiểm tra role là đủ."
+
+Không đủ.
+
+Ví dụ:
+
+- hai người đều có role `SELLER`
+- nhưng seller A không được phép xác nhận order của seller B
+
+Nghĩa là:
+
+- `role check` kiểm tra loại quyền
+- `ownership check` kiểm tra quyền trên tài nguyên cụ thể
+
+Hai thứ này thường phải đi cùng nhau.
+
+---
+
+## 3. Enum là gì và vì sao enum Java phải khớp với enum trong database
+
+### Định nghĩa
+
+`enum` là một kiểu dữ liệu chỉ cho phép một số giá trị cố định.
+
+Ví dụ:
 
 ```java
 public enum OrderStatus {
@@ -84,11 +220,73 @@ public enum OrderStatus {
 }
 ```
 
-### Lợi ích
+Nghĩa là trạng thái đơn hàng chỉ được nằm trong 4 giá trị đó.
 
-- Dễ đọc khi so với migration SQL.
-- Giảm rủi ro runtime khi map enum.
-- Ít phải dùng converter hoặc custom type phức tạp.
+Bạn không thể gán bừa kiểu:
+
+- `hello`
+- `123`
+- `almost_done`
+
+nếu những giá trị đó không nằm trong enum.
+
+### Vì sao enum hữu ích
+
+Enum giúp:
+
+- code rõ nghĩa hơn
+- tránh gõ sai chuỗi
+- giảm lỗi logic
+- dễ kiểm soát trạng thái của hệ thống
+
+### Vấn đề đã gặp trong project
+
+Trong database PostgreSQL, enum được khai báo theo dạng chữ thường:
+
+- `pending`
+- `deposited`
+- `completed`
+
+Nhưng trong Java trước đó lại dùng:
+
+- `PENDING`
+- `DEPOSITED`
+- `COMPLETED`
+
+Hai bên không giống nhau.
+
+### Vì sao đây là vấn đề
+
+Khi JPA map dữ liệu từ Java xuống database, nó cần biết giá trị nào sẽ được ghi.
+
+Nếu Java ghi:
+
+```java
+PENDING
+```
+
+nhưng database chỉ chấp nhận:
+
+```sql
+'pending'
+```
+
+thì có thể phát sinh lỗi runtime hoặc map sai.
+
+### Cách sửa đã dùng
+
+Trong lần sửa này, các enum liên quan đã được đổi sang dạng lowercase để khớp với PostgreSQL.
+
+Ví dụ:
+
+```java
+public enum OrderStatus {
+    pending,
+    deposited,
+    completed,
+    cancelled
+}
+```
 
 ### Đã áp dụng vào đâu
 
@@ -99,149 +297,452 @@ public enum OrderStatus {
 - `ReportStatus`
 - `NotificationType`
 
-## 4. Flyway migration dùng để làm gì
+### Lỗi hiểu sai thường gặp
 
-Flyway là công cụ quản lý thay đổi database theo từng version.
+Hiểu sai:
+"Chữ hoa hay chữ thường chỉ là chuyện style."
 
-Thay vì sửa tay database mỗi lần code đổi, ta ghi lại thay đổi bằng file migration:
+Sai.
 
-- `V1__...sql`
-- `V2__...sql`
-- `V3__...sql`
-- `V4__...sql`
+Trong nhiều tình huống, đây không phải chuyện style mà là chuyện dữ liệu có map đúng hay không.
 
-Mỗi file là một bước thay đổi rõ ràng.
+---
 
-### Trong lần sửa này đã làm gì với migration
+## 4. Flyway migration là gì
 
-Đã thêm `V4__align_runtime_schema.sql` để:
+### Định nghĩa
 
-- thêm các giá trị còn thiếu cho `product_status`
+`migration` là một bước thay đổi cấu trúc database có ghi lại lịch sử.
+
+`Flyway` là công cụ giúp quản lý các bước thay đổi đó.
+
+Bạn có thể hiểu đơn giản:
+
+- code thay đổi
+- database cũng phải thay đổi theo
+- Flyway ghi lại những thay đổi đó thành từng file có thứ tự
+
+### Ví dụ đơn giản
+
+Ban đầu bảng `users` chưa có cột `average_rating`.
+
+Sau này project cần lưu điểm trung bình của seller.
+
+Ta không nên chỉ vào database và thêm tay một cột.
+
+Ta nên tạo migration, ví dụ:
+
+```sql
+ALTER TABLE users
+ADD COLUMN average_rating DOUBLE PRECISION DEFAULT 0.0;
+```
+
+Nhờ vậy:
+
+- mọi môi trường đều có cùng thay đổi
+- người khác kéo code về cũng biết database phải thay đổi thế nào
+- lịch sử thay đổi được lưu lại rõ ràng
+
+### Đã áp dụng trong project này như thế nào
+
+Trong lần sửa này, đã thêm:
+
+- `V4__align_runtime_schema.sql`
+
+Migration này dùng để:
+
+- thêm các giá trị mới cho `product_status`
 - thêm `average_rating`
 - thêm `total_reviews`
 
-Điều này giúp database tiến gần hơn với entity hiện tại trong code.
+### Vì sao việc này quan trọng
 
-## 5. Một feature chỉ có entity chưa đủ gọi là hoàn thành
+Nếu entity trong code đã có field mới nhưng database chưa có cột tương ứng, hệ thống sẽ bị lệch.
 
-Nhiều bạn mới học thường thấy đã có:
+Sự lệch này gọi là `schema drift`.
 
-- entity
-- repository
+### Định nghĩa `schema drift`
 
-thì nghĩ feature gần xong.
+`schema` là cấu trúc của database.
 
-Thực tế chưa đủ.
+`drift` có thể hiểu là "trôi lệch".
 
-Một feature backend usable thường cần:
+`schema drift` nghĩa là:
 
-1. Controller nhận request
-2. Service chứa business logic
-3. Repository truy xuất dữ liệu
-4. Security/ownership đúng
-5. Migration/schema tương ứng
-6. Test cơ bản
+- code nghĩ database đang có cấu trúc A
+- nhưng database thật lại đang là cấu trúc B
 
-Nếu thiếu các phần này, feature thường mới ở mức `Partial`.
+### Lỗi hiểu sai thường gặp
 
-### Đã áp dụng vào đâu
+Hiểu sai:
+"Chỉ cần sửa entity Java là đủ."
 
-Trước đây `Wishlist` và `Order` chủ yếu mới ở mức entity/repository. Trong lần sửa này đã thêm:
+Sai vì:
+
+- entity chỉ là phần mô tả ở phía code
+- database thật vẫn cần được cập nhật
+
+---
+
+## 5. Vì sao một feature có entity vẫn chưa thể coi là xong
+
+### Bối cảnh
+
+Đây là lỗi đánh giá tiến độ rất hay gặp khi mới học backend.
+
+Bạn mở project ra và thấy:
+
+- có `Order.java`
+- có `Wishlist.java`
+- có repository
+
+rồi kết luận:
+
+"Feature này chắc gần xong."
+
+Thực tế thường không phải vậy.
+
+### Định nghĩa
+
+Một backend feature "dùng được" thường cần đủ nhiều lớp:
+
+1. Controller
+2. Service
+3. Repository
+4. Entity
+5. Security
+6. Migration
+7. Test
+
+### Giải thích từng lớp bằng ngôn ngữ đơn giản
+
+`Controller`
+
+- nhận request từ client
+- trả response về client
+
+`Service`
+
+- chứa business logic
+- quyết định hệ thống sẽ xử lý nghiệp vụ ra sao
+
+`Repository`
+
+- đọc và ghi dữ liệu từ database
+
+`Entity`
+
+- mô tả dữ liệu trong code
+
+`Security`
+
+- kiểm tra ai được phép làm gì
+
+`Migration`
+
+- cập nhật database cho đúng với code
+
+`Test`
+
+- kiểm tra xem tính năng có còn chạy đúng không sau khi sửa
+
+### Ví dụ đơn giản
+
+Nếu chỉ có `Wishlist.java` nhưng không có:
+
+- API để thêm sản phẩm vào wishlist
+- API để xóa
+- API để xem danh sách wishlist
+
+thì người dùng vẫn chưa sử dụng được feature đó.
+
+### Đã áp dụng trong project này như thế nào
+
+Trước đây:
+
+- `Wishlist` và `Order` chủ yếu mới dừng ở dữ liệu và repository
+
+Sau lần sửa này đã bổ sung:
 
 - `WishlistController`, `WishlistService`, `WishlistRepository`
 - `OrderController`, `OrderService`, `OrderRepository`
 
-Điều này biến chúng từ "có cấu trúc dữ liệu" thành "có API flow để dùng".
+Nghĩa là hai feature này đã tiến thêm một bước lớn: từ "có cấu trúc dữ liệu" sang "có luồng xử lý backend thực tế".
 
-## 6. Business flow của `Order` trong lần sửa này
+### Lỗi hiểu sai thường gặp
 
-Flow hiện tại được làm theo hướng tối thiểu nhưng usable:
+Hiểu sai:
+"Có entity là coi như đã 70%."
+
+Sai vì:
+
+- entity thường chỉ là phần đầu
+- phần khó hơn thường nằm ở business rule, auth, ownership, test, migration
+
+---
+
+## 6. Business flow là gì và order flow trong lần sửa này hoạt động ra sao
+
+### Định nghĩa
+
+`business flow` là luồng nghiệp vụ.
+
+Nói đơn giản hơn:
+
+"Người dùng làm bước 1, hệ thống phản ứng ra sao, rồi tới bước 2, bước 3..."
+
+### Ví dụ rất đơn giản
+
+Trong một ứng dụng bán hàng, flow có thể là:
+
+1. Người mua chọn sản phẩm
+2. Người mua tạo đơn
+3. Người bán xác nhận
+4. Đơn hoàn tất
+
+Đó chính là business flow.
+
+### Order flow trong project này sau lần sửa
+
+Flow hiện tại ở mức backend cơ bản nhưng đã usable hơn trước:
 
 1. Buyer tạo order
-2. Seller/Admin xác nhận đặt cọc
-3. Seller/Admin hoàn tất order
-4. Hệ thống đổi trạng thái product sang `sold`
-5. Buyer/Seller/Admin có thể hủy order nếu chưa hoàn tất
+2. Seller hoặc admin xác nhận đặt cọc
+3. Seller hoặc admin hoàn tất order
+4. Khi hoàn tất, product được chuyển sang trạng thái `sold`
+5. Buyer, seller, hoặc admin có thể hủy order nếu đơn chưa hoàn tất
 
-### Điểm cần nhớ
+### Vì sao flow này quan trọng
 
-Đây mới là flow backend cơ bản.
+Nếu chỉ lưu order vào database mà không có quy tắc chuyển trạng thái, hệ thống sẽ rất rối.
 
-Nó chưa phải payment/escrow hoàn chỉnh vì còn thiếu:
+Ví dụ:
+
+- không biết khi nào đơn được xem là hợp lệ
+- không biết khi nào sản phẩm phải chuyển sang `sold`
+- không biết ai được phép xác nhận đơn
+
+### Điều gì vẫn còn thiếu
+
+Flow hiện tại chưa phải là hệ thống thanh toán hoàn chỉnh. Vẫn còn thiếu:
 
 - cổng thanh toán
 - đối soát giao dịch
 - hoàn tiền
 - dispute/refund flow
 
-Nghĩa là feature đã usable hơn trước, nhưng chưa đạt mức `Done` theo SRS.
+Điều này có nghĩa là:
+
+- feature đã tiến bộ
+- nhưng vẫn chưa đạt mức `Done` theo SRS
+
+### Lỗi hiểu sai thường gặp
+
+Hiểu sai:
+"Có API tạo order là xong order feature."
+
+Sai vì:
+
+- tạo order chỉ là một phần của flow
+- còn cần trạng thái, phân quyền, chuyển trạng thái, và xử lý các trường hợp lỗi
+
+---
 
 ## 7. Vì sao chat vẫn cần kiểm tra participant
 
-Kể cả khi đã có conversation ID, backend vẫn phải kiểm tra người gọi có thuộc conversation đó hay không.
+### Định nghĩa
 
-Nếu không kiểm tra, ai biết `conversationId` cũng có thể đọc tin nhắn.
+`participant` là người tham gia vào một conversation.
 
-### Trong lần sửa này
+Trong project này, participant thường là:
 
-`MessageServiceImpl` đã thêm kiểm tra:
+- buyer
+- seller
 
-- nếu user không phải buyer hoặc seller của conversation
-- thì ném `FORBIDDEN`
+### Vấn đề
 
-Ngoài ra cũng đã bỏ query JPQL không hợp lệ dạng `LIMIT 1` và thay bằng query method của Spring Data.
+Ngay cả khi người dùng đã đăng nhập, backend vẫn phải kiểm tra:
 
-## 8. Vì sao build không chạy được dù code có thể đúng
+- người này có thật sự nằm trong conversation này không?
 
-Khi chạy Maven, dự án báo:
+Nếu không kiểm tra, ai biết `conversationId` cũng có thể thử đọc tin nhắn.
 
-`release version 21 not supported`
+### Ví dụ đơn giản
 
-Điều này không có nghĩa code chắc chắn sai. Nó có nghĩa môi trường hiện tại đang dùng JDK 17 trong khi project yêu cầu Java 21.
+Giả sử conversation `C1` là giữa:
 
-### Bài học quan trọng
+- buyer A
+- seller B
 
-Khi verify backend Java, cần tách rõ:
+Nếu user C không liên quan gì nhưng vẫn gọi:
 
-- lỗi code
-- lỗi môi trường build
+```http
+GET /api/conversations/C1/messages
+```
 
-Trong lần này, môi trường đang là:
+thì backend phải từ chối.
 
-- Java 17
+### Đã áp dụng trong project này như thế nào
 
-Trong khi project đang target:
+Trong `MessageServiceImpl`, đã thêm kiểm tra:
 
-- Java 21
+- nếu user không phải buyer
+- và cũng không phải seller
+- thì ném lỗi `FORBIDDEN`
 
-Nên bước compile/test bị chặn từ trước khi kiểm tra hết source code.
+### Một lỗi kỹ thuật khác cũng đã được sửa
+
+Trước đó repository dùng một JPQL query có `LIMIT 1`.
+
+Điều này không chuẩn trong JPQL.
+
+Đã thay bằng query method của Spring Data:
+
+```java
+findFirstByConversationIdOrderByCreatedAtDesc(...)
+```
+
+### Bài học rút ra
+
+Không chỉ cần đúng về nghiệp vụ, mà còn phải đúng với công nghệ đang dùng.
+
+---
+
+## 8. Phân biệt lỗi code và lỗi môi trường build
+
+### Bối cảnh
+
+Khi chạy Maven, dự án từng báo:
+
+```text
+release version 21 not supported
+```
+
+Người mới học thường rất dễ kết luận ngay:
+
+"Code bị sai."
+
+Nhưng kết luận đó chưa chắc đúng.
+
+### Định nghĩa
+
+`lỗi code`
+
+- lỗi xuất phát từ source code
+- ví dụ sai cú pháp, sai import, sai logic, type không khớp
+
+`lỗi môi trường`
+
+- lỗi do máy đang chạy không đúng điều kiện mà project yêu cầu
+- ví dụ sai version Java, thiếu database, thiếu biến môi trường
+
+### Trường hợp trong project này
+
+Project target Java 21.
+
+Nhưng môi trường hiện tại lúc đó đang dùng Java 17.
+
+Vì vậy Maven không verify theo cấu hình gốc được.
+
+### Điều này dạy ta điều gì
+
+Khi gặp lỗi build, cần hỏi:
+
+1. Source code có sai không?
+2. Hay máy đang dùng sai toolchain?
+
+### Đã làm gì để kiểm tra thêm
+
+Đã chạy một bước kiểm tra tương thích với `release=17` để xem:
+
+- code có lỗi compile rõ ràng không
+- context test cơ bản có lên được không
+
+Kết quả:
+
+- compile pass
+- test `contextLoads` pass
+
+Điều đó không chứng minh rằng mọi thứ đã hoàn hảo trên Java 21, nhưng nó cho thấy:
+
+- thay đổi mới không có lỗi cú pháp/wiring quá rõ
+
+### Lỗi hiểu sai thường gặp
+
+Hiểu sai:
+"Build fail nghĩa là sửa code chưa đúng."
+
+Không phải lúc nào cũng vậy.
+
+Đôi khi vấn đề nằm ở:
+
+- JDK sai version
+- cấu hình môi trường sai
+- dependency chưa đúng
+
+---
 
 ## 9. Cách tự đọc một backend feature cho đúng
 
-Khi gặp một module như `wishlist` hoặc `order`, hãy đọc theo thứ tự:
+Khi bạn muốn tự đánh giá một module như `wishlist`, `order`, `review`, hãy đi theo thứ tự sau:
 
-1. Controller
-2. Service
-3. Repository
-4. Entity
-5. Migration
-6. Security
-7. Test
+1. `Controller`
+2. `Service`
+3. `Repository`
+4. `Entity`
+5. `Migration`
+6. `Security`
+7. `Test`
 
-Nếu chỉ nhìn entity hoặc repository, rất dễ đánh giá tiến độ sai.
+### Vì sao nên đọc theo thứ tự này
 
-## 10. Tóm tắt những gì nên nhớ sau lần sửa này
+Vì thứ tự này gần giống luồng chạy thật của hệ thống:
 
-- Không tin `userId` do client tự gửi nếu đã có auth.
-- Muốn an toàn thì phải kiểm tra ownership.
-- Enum Java và enum PostgreSQL phải khớp nhau.
-- Có entity chưa có nghĩa là feature đã usable.
+- request đi vào controller
+- controller gọi service
+- service gọi repository
+- repository làm việc với database
+
+Sau đó bạn mới kiểm tra:
+
+- dữ liệu có đúng schema không
+- quyền có đúng không
+- test có bảo vệ được không
+
+### Một mẹo rất quan trọng
+
+Nếu bạn chỉ nhìn:
+
+- entity
+- repository
+
+thì rất dễ đánh giá nhầm là feature đã gần xong.
+
+Hãy luôn tự hỏi:
+
+- endpoint nào gọi feature này?
+- business rule nằm ở đâu?
+- user nào được phép gọi?
+- database đã có migration chưa?
+- đã có test chưa?
+
+---
+
+## 10. Tóm tắt ngắn gọn những điều quan trọng nhất
+
+- Không nên tin `userId` do client tự gửi nếu hệ thống đã có auth.
+- Đăng nhập rồi vẫn chưa đủ, còn phải kiểm tra ownership.
+- Enum trong Java và enum trong PostgreSQL phải khớp nhau.
+- Có entity không có nghĩa là feature đã hoàn thành.
 - Flyway giúp database đi cùng với code.
-- Khi build lỗi, phải kiểm tra xem đó là lỗi code hay lỗi môi trường.
+- Khi build lỗi, phải tách rõ lỗi code và lỗi môi trường.
+- Muốn hiểu một feature backend, đừng chỉ nhìn entity. Hãy đọc cả controller, service, security, migration, và test.
 
-## Liên hệ trực tiếp với lần sửa này
+---
 
-Nếu bạn muốn đọc code để hiểu lại toàn bộ thay đổi, hãy ưu tiên xem các file sau:
+## Gợi ý đọc code sau khi đọc xong tài liệu này
+
+Nếu bạn muốn quay lại code để nhìn những ý trên trong thực tế, hãy xem các file sau:
 
 - `src/main/java/com/backend/old_bicycle_project/controller/NotificationController.java`
 - `src/main/java/com/backend/old_bicycle_project/controller/InspectionController.java`
@@ -250,3 +751,10 @@ Nếu bạn muốn đọc code để hiểu lại toàn bộ thay đổi, hãy �
 - `src/main/java/com/backend/old_bicycle_project/service/impl/MessageServiceImpl.java`
 - `src/main/java/com/backend/old_bicycle_project/service/impl/OrderServiceImpl.java`
 - `src/main/resources/db/migration/V4__align_runtime_schema.sql`
+
+Bạn có thể thử đọc theo cách sau:
+
+1. Đọc controller để biết API nào đã được mở ra
+2. Đọc service để biết logic thật sự nằm ở đâu
+3. Đọc migration để biết database đã đổi gì
+4. Tự trả lời câu hỏi: "Nếu bỏ đoạn kiểm tra này đi thì bug gì có thể xảy ra?"

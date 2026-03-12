@@ -12,7 +12,7 @@ This repository is a **Java 21 / Spring Boot / PostgreSQL backend** for the Old 
 - Main spec: `../SRS-Old-Bicycles-Marketplace (1).md`
 - Assessment and planning docs: `docs/ai/requirements/` and `docs/ai/planning/`
 - Prefer `.agents` over `.claude` when both contain similarly named skills
-- Supabase PostgreSQL ID: kfkzxghznwgbbarfsqre.
+- Supabase project PostgreSQL ID: kfkzxghznwgbbarfsqre.
 
 ## Required Protocol
 
@@ -59,8 +59,22 @@ If one link in that chain is missing, the feature is at best `Partial`.
 ## Knowledge Capture
 
 - After any large task involving code creation, code edits, refactoring, architecture changes, debugging, or any work that introduces useful new programming knowledge, write or update a beginner-friendly knowledge note in `docs/knowledge/`.
-- Write knowledge notes in Vietnamese by default, with clear wording aimed at someone new to programming.
+- Write knowledge notes in Vietnamese by default, with wording suitable for a first-year university student who is new to programming.
+- Assume the reader may only know basic ideas such as variables, functions, classes, and HTTP at a very early level.
 - Explain both the underlying concept and how that concept was applied in the task that was just completed.
+- Define important terms clearly before using them in longer explanations. Do not rely on jargon without explanation.
+- If an English technical term is necessary, explain it immediately in simple Vietnamese the first time it appears.
+- Prefer this explanation order when relevant:
+  1. Problem or context
+  2. Definition of the concept
+  3. Why it matters
+  4. Small example
+  5. How it was applied in this project
+  6. Common mistakes or misunderstandings
+- When a concept is abstract, include a short concrete example, and add a before/after example when that helps make the difference obvious.
+- Separate clearly between `definition`, `example`, and `application in the project` so the reader does not have to infer the structure.
+- Use short sections, short paragraphs, and simple sentences. Prefer clarity over compactness.
+- Make cause-and-effect explicit. State not only what changed, but why that change prevents a bug, improves safety, or matches the SRS better.
 - Before creating a new knowledge note, review `docs/knowledge/` to see whether the topic already exists.
-- If a related note already exists, extend it only with genuinely new or missing knowledge instead of creating duplicate content.
+- If a related note already exists, extend it with missing definitions, missing examples, or clearer explanations instead of creating duplicate content.
 - If no related note exists, create a new Markdown file under `docs/knowledge/` with a focused title.
