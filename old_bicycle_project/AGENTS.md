@@ -20,8 +20,7 @@ This repository is a **Java 21 / Spring Boot / PostgreSQL backend** for the Old 
 2. Read that agent file.
 3. Read only the skills listed in that agent's `skills:` frontmatter.
 4. Apply those rules to the task.
-5. When using any agent, skill, or workflow, explicitly tell the user which ones are being used and why before doing substantial work.
-
+5. When using any agent, skill, or workflow, explicitly tell the user which ones are being used and why before doing substantial work. After task is done, announce to the user which ones are being used again.
 ## Default Routing
 
 - Progress reports, SRS checks, gap analysis: `requirements-analyst`
