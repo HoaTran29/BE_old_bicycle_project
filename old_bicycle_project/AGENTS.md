@@ -71,7 +71,7 @@ If one link in that chain is missing, the feature is at best `Partial`.
   4. Small example
   5. How it was applied in this project
   6. Common mistakes or misunderstandings
-- When a concept is abstract, include a short concrete example, and add a before/after example when that helps make the difference obvious.
+- When a concept is abstract, include a short concrete example or suitable code snippet, and add a before/after example when that helps make the difference obvious.
 - Separate clearly between `definition`, `example`, and `application in the project` so the reader does not have to infer the structure.
 - Use short sections, short paragraphs, and simple sentences. Prefer clarity over compactness.
 - Make cause-and-effect explicit. State not only what changed, but why that change prevents a bug, improves safety, or matches the SRS better.
