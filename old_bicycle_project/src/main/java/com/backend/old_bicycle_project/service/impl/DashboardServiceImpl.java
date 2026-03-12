@@ -32,7 +32,7 @@ public class DashboardServiceImpl implements DashboardService {
         long totalProducts = productRepository.count();
         long totalOrders = orderRepository.count();
         
-        BigDecimal totalRevenueRaw = orderRepository.sumTotalAmountByStatus(OrderStatus.COMPLETED);
+        BigDecimal totalRevenueRaw = orderRepository.sumTotalAmountByStatus(OrderStatus.completed);
         BigDecimal totalRevenue = totalRevenueRaw != null ? totalRevenueRaw : BigDecimal.ZERO;
 
         long totalInspections = inspectionRepository.count();

@@ -39,6 +39,8 @@ public class MessageServiceImpl implements MessageService {
         User sender = userRepository.findById(requestDTO.getSenderId())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
+        validateParticipant(conversation, sender.getId());
+
         // Create message
         Message message = Message.builder()
                 .conversation(conversation)
@@ -65,7 +67,7 @@ public class MessageServiceImpl implements MessageService {
                 recipientId,
                 "Tin nhắn mới",
                 sender.getFullName() + " đã gửi cho bạn một tin nhắn: " + (message.getContent().length() > 20 ? message.getContent().substring(0, 20) + "..." : message.getContent()),
-                com.backend.old_bicycle_project.entity.enums.NotificationType.CHAT,
+                com.backend.old_bicycle_project.entity.enums.NotificationType.chat,
                 "{\"conversationId\": \"" + conversation.getId() + "\"}"
         ));
 
@@ -73,11 +75,10 @@ public class MessageServiceImpl implements MessageService {
     }
 
     @Override
-    public Page<MessageResponseDTO> getMessagesByConversation(UUID conversationId, Pageable pageable) {
-        // Ensure conversation exists
-        if (!conversationRepository.existsById(conversationId)) {
-            throw new AppException(ErrorCode.RECORD_NOT_EXISTS);
-        }
+    public Page<MessageResponseDTO> getMessagesByConversation(UUID conversationId, UUID userId, Pageable pageable) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
+        validateParticipant(conversation, userId);
 
         Page<Message> messages = messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable);
         return messages.map(this::mapToDTO);
@@ -86,7 +87,18 @@ public class MessageServiceImpl implements MessageService {
     @Override
     @Transactional
     public void markMessagesAsRead(UUID conversationId, UUID userId) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
+        validateParticipant(conversation, userId);
         messageRepository.markMessagesAsRead(conversationId, userId);
+    }
+
+    private void validateParticipant(Conversation conversation, UUID userId) {
+        boolean isParticipant = conversation.getBuyer().getId().equals(userId)
+                || conversation.getSeller().getId().equals(userId);
+        if (!isParticipant) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
     }
 
     private MessageResponseDTO mapToDTO(Message message) {

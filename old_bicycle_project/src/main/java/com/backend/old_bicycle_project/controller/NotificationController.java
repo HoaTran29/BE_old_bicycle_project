@@ -2,15 +2,15 @@ package com.backend.old_bicycle_project.controller;
 
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.NotificationResponseDTO;
+import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -19,15 +19,14 @@ public class NotificationController {
 
     private final NotificationService notificationService;
 
-    @GetMapping("/user/{userId}")
+    @GetMapping("/me")
     public ResponseEntity<ApiResponse<Page<NotificationResponseDTO>>> getUserNotifications(
-            @PathVariable UUID userId,
+            @AuthenticationPrincipal User currentUser,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size) {
-        
-        // TODO: Replace path variable with authenticated user ID from SecurityContext
         Pageable pageable = PageRequest.of(page, size);
-        Page<NotificationResponseDTO> notifications = notificationService.getUserNotifications(userId, pageable);
+        Page<NotificationResponseDTO> notifications =
+                notificationService.getUserNotifications(currentUser.getId(), pageable);
         
         return ResponseEntity.ok(ApiResponse.<Page<NotificationResponseDTO>>builder()
                 .code(200)
@@ -36,9 +35,9 @@ public class NotificationController {
                 .build());
     }
 
-    @GetMapping("/user/{userId}/unread-count")
-    public ResponseEntity<ApiResponse<Long>> getUnreadCount(@PathVariable UUID userId) {
-        long count = notificationService.getUnreadCount(userId);
+    @GetMapping("/me/unread-count")
+    public ResponseEntity<ApiResponse<Long>> getUnreadCount(@AuthenticationPrincipal User currentUser) {
+        long count = notificationService.getUnreadCount(currentUser.getId());
         return ResponseEntity.ok(ApiResponse.<Long>builder()
                 .code(200)
                 .message("Fetched unread count successfully")
@@ -47,17 +46,19 @@ public class NotificationController {
     }
 
     @PutMapping("/{notificationId}/read")
-    public ResponseEntity<ApiResponse<Void>> markAsRead(@PathVariable UUID notificationId) {
-        notificationService.markAsRead(notificationId);
+    public ResponseEntity<ApiResponse<Void>> markAsRead(
+            @PathVariable java.util.UUID notificationId,
+            @AuthenticationPrincipal User currentUser) {
+        notificationService.markAsRead(notificationId, currentUser.getId());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .code(200)
                 .message("Notification marked as read")
                 .build());
     }
 
-    @PutMapping("/user/{userId}/read-all")
-    public ResponseEntity<ApiResponse<Void>> markAllAsRead(@PathVariable UUID userId) {
-        notificationService.markAllAsRead(userId);
+    @PutMapping("/me/read-all")
+    public ResponseEntity<ApiResponse<Void>> markAllAsRead(@AuthenticationPrincipal User currentUser) {
+        notificationService.markAllAsRead(currentUser.getId());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .code(200)
                 .message("All notifications marked as read")

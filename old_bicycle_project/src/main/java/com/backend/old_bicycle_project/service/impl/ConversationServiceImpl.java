@@ -84,7 +84,7 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     private ConversationResponseDTO mapToDTO(Conversation conversation) {
-        Optional<Message> latestMessage = messageRepository.findLatestMessageByConversationId(conversation.getId());
+        Optional<Message> latestMessage = messageRepository.findFirstByConversationIdOrderByCreatedAtDesc(conversation.getId());
 
         return ConversationResponseDTO.builder()
                 .id(conversation.getId())

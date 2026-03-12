@@ -12,7 +12,7 @@ public interface ReviewService {
     /**
      * Buyer submits a review for an order
      */
-    ReviewResponseDTO submitReview(UUID orderId, ReviewRequestDTO requestDTO);
+    ReviewResponseDTO submitReview(UUID orderId, UUID reviewerId, ReviewRequestDTO requestDTO);
 
     /**
      * Get paginated reviews for a specific seller

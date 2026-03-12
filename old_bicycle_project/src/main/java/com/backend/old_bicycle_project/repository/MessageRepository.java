@@ -17,8 +17,7 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
 
     Page<Message> findByConversationIdOrderByCreatedAtDesc(UUID conversationId, Pageable pageable);
 
-    @Query("SELECT m FROM Message m WHERE m.conversation.id = :conversationId ORDER BY m.createdAt DESC LIMIT 1")
-    Optional<Message> findLatestMessageByConversationId(@Param("conversationId") UUID conversationId);
+    Optional<Message> findFirstByConversationIdOrderByCreatedAtDesc(UUID conversationId);
 
     @Modifying
     @Query("UPDATE Message m SET m.isRead = true WHERE m.conversation.id = :conversationId AND m.sender.id != :userId AND m.isRead = false")

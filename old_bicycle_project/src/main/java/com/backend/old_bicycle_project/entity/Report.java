@@ -41,7 +41,7 @@ public class Report {
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private ReportStatus status = ReportStatus.PENDING;
+    private ReportStatus status = ReportStatus.pending;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

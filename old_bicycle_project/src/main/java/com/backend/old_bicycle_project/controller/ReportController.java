@@ -4,6 +4,7 @@ import com.backend.old_bicycle_project.dto.request.ReportProcessDTO;
 import com.backend.old_bicycle_project.dto.request.ReportRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.ReportResponseDTO;
+import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.ReportService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -24,9 +26,9 @@ public class ReportController {
     // User Endpoint
     @PostMapping("/api/reports")
     public ResponseEntity<ApiResponse<ReportResponseDTO>> submitReport(
+            @AuthenticationPrincipal User currentUser,
             @RequestBody @Valid ReportRequestDTO requestDTO) {
-        
-        ReportResponseDTO responseDTO = reportService.submitReport(requestDTO);
+        ReportResponseDTO responseDTO = reportService.submitReport(currentUser.getId(), requestDTO);
         return ResponseEntity.ok(ApiResponse.<ReportResponseDTO>builder()
                 .code(200)
                 .message("Report submitted successfully")

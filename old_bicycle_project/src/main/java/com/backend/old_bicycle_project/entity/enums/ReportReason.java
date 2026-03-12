@@ -1,11 +1,11 @@
 package com.backend.old_bicycle_project.entity.enums;
 
 public enum ReportReason {
-    FRAUD("fraud"),
-    FAKE("fake"),
-    WRONG_DESCRIPTION("wrong_description"),
-    SPAM("spam"),
-    OTHER("other");
+    fraud("fraud"),
+    fake("fake"),
+    wrong_description("wrong_description"),
+    spam("spam"),
+    other("other");
 
     private final String reason;
 

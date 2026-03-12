@@ -65,11 +65,11 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    public void markAsRead(UUID notificationId) {
-        if (!notificationRepository.existsById(notificationId)) {
-            throw new AppException(ErrorCode.RECORD_NOT_EXISTS);
-        }
-        notificationRepository.markAsRead(notificationId);
+    public void markAsRead(UUID notificationId, UUID userId) {
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
+        notification.setIsRead(true);
+        notificationRepository.save(notification);
     }
 
     @Override

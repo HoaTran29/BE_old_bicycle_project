@@ -1,12 +1,12 @@
 package com.backend.old_bicycle_project.entity.enums;
 
 public enum NotificationType {
-    ORDER("order"),
-    CHAT("chat"),
-    SYSTEM("system"),
-    INSPECTION("inspection"),
-    PROMOTION("promotion"),
-    WISHLIST("wishlist");
+    order("order"),
+    chat("chat"),
+    system("system"),
+    inspection("inspection"),
+    promotion("promotion"),
+    wishlist("wishlist");
 
     private final String type;
 

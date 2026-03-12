@@ -13,7 +13,7 @@ public interface ReportService {
     /**
      * User submits a report
      */
-    ReportResponseDTO submitReport(ReportRequestDTO requestDTO);
+    ReportResponseDTO submitReport(UUID reporterId, ReportRequestDTO requestDTO);
 
     /**
      * Admin gets paginated list of reports

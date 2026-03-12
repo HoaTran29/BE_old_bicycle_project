@@ -97,8 +97,8 @@ public class InspectionServiceImpl implements InspectionService {
         inspection.setOverallScore(overallScore);
         inspection.setPassed(dto.getPassed());
         
-        // 6 months validity
-        inspection.setValidUntil(LocalDateTime.now().plusMonths(6));
+        // SRS BR06: inspection stays valid for 7 days or until the product is sold.
+        inspection.setValidUntil(LocalDateTime.now().plusDays(7));
 
         inspection = inspectionRepository.save(inspection);
 

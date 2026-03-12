@@ -30,17 +30,17 @@ public class ReviewServiceImpl implements ReviewService {
 
     @Override
     @Transactional
-    public ReviewResponseDTO submitReview(UUID orderId, ReviewRequestDTO requestDTO) {
+    public ReviewResponseDTO submitReview(UUID orderId, UUID reviewerId, ReviewRequestDTO requestDTO) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS)); // Should be ORDER_NOT_FOUND but using closest
 
         // Ensure order is COMPLETED before allowing review
-        if (order.getStatus() != OrderStatus.COMPLETED) {
+        if (order.getStatus() != OrderStatus.completed) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
         // Validate reviewer is the buyer
-        if (!order.getBuyer().getId().equals(requestDTO.getReviewerId())) {
+        if (!order.getBuyer().getId().equals(reviewerId)) {
             throw new AppException(ErrorCode.FORBIDDEN);
         }
 

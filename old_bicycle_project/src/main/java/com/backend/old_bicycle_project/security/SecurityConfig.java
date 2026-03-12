@@ -101,8 +101,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                         // ===== Inspector =====
-                        .requestMatchers(HttpMethod.POST, "/api/inspections").hasAnyRole("INSPECTOR", "ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/inspections/*").hasAnyRole("INSPECTOR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/inspections/request/*").hasAnyRole("SELLER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/inspections/evaluate/*").hasAnyRole("INSPECTOR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/inspections/**").permitAll()
 
                         // ===== Seller =====

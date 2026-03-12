@@ -16,9 +16,6 @@ import java.util.UUID;
 @Builder
 public class ReportRequestDTO {
 
-    @NotNull(message = "Reporter ID is required")
-    private UUID reporterId;
-
     @NotNull(message = "Target ID is required")
     private UUID targetId;
 

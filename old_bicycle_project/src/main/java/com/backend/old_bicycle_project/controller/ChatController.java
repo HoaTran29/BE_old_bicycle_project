@@ -4,6 +4,7 @@ import com.backend.old_bicycle_project.dto.request.MessageRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.ConversationResponseDTO;
 import com.backend.old_bicycle_project.dto.response.MessageResponseDTO;
+import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.ConversationService;
 import com.backend.old_bicycle_project.service.MessageService;
 import jakarta.validation.Valid;
@@ -15,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,11 +32,10 @@ public class ChatController {
 
     // --- REST APIs for pulling data ---
 
-    @GetMapping("/api/conversations/user/{userId}")
+    @GetMapping("/api/conversations/me")
     public ResponseEntity<ApiResponse<List<ConversationResponseDTO>>> getUserConversations(
-            @PathVariable UUID userId) {
-        // TODO: Replace path variable with authenticated user ID from SecurityContext
-        List<ConversationResponseDTO> conversations = conversationService.getUserConversations(userId);
+            @AuthenticationPrincipal User currentUser) {
+        List<ConversationResponseDTO> conversations = conversationService.getUserConversations(currentUser.getId());
         return ResponseEntity.ok(ApiResponse.<List<ConversationResponseDTO>>builder()
                 .code(200)
                 .message("Fetched conversations successfully")
@@ -45,9 +46,9 @@ public class ChatController {
     @PostMapping("/api/conversations")
     public ResponseEntity<ApiResponse<ConversationResponseDTO>> createOrGetConversation(
             @RequestParam UUID productId,
-            @RequestParam UUID buyerId) {
-        // TODO: Ensure buyerId is the authenticated user or allow Seller to start?
-        ConversationResponseDTO conversation = conversationService.createOrGetConversation(productId, buyerId);
+            @AuthenticationPrincipal User currentUser) {
+        ConversationResponseDTO conversation =
+                conversationService.createOrGetConversation(productId, currentUser.getId());
         return ResponseEntity.ok(ApiResponse.<ConversationResponseDTO>builder()
                 .code(200)
                 .message("Conversation retrieved/created successfully")
@@ -58,11 +59,13 @@ public class ChatController {
     @GetMapping("/api/conversations/{conversationId}/messages")
     public ResponseEntity<ApiResponse<Page<MessageResponseDTO>>> getMessages(
             @PathVariable UUID conversationId,
+            @AuthenticationPrincipal User currentUser,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         
         Pageable pageable = PageRequest.of(page, size);
-        Page<MessageResponseDTO> messages = messageService.getMessagesByConversation(conversationId, pageable);
+        Page<MessageResponseDTO> messages =
+                messageService.getMessagesByConversation(conversationId, currentUser.getId(), pageable);
         
         return ResponseEntity.ok(ApiResponse.<Page<MessageResponseDTO>>builder()
                 .code(200)
@@ -74,8 +77,8 @@ public class ChatController {
     @PutMapping("/api/conversations/{conversationId}/read")
     public ResponseEntity<ApiResponse<Void>> markAsRead(
             @PathVariable UUID conversationId,
-            @RequestParam UUID userId) {
-        messageService.markMessagesAsRead(conversationId, userId);
+            @AuthenticationPrincipal User currentUser) {
+        messageService.markMessagesAsRead(conversationId, currentUser.getId());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .code(200)
                 .message("Messages marked as read")

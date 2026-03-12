@@ -1,9 +1,9 @@
 package com.backend.old_bicycle_project.entity.enums;
 
 public enum PaymentMethod {
-    TRANSFER("transfer"),
-    CASH("cash"),
-    ONLINE("online");
+    transfer("transfer"),
+    cash("cash"),
+    online("online");
 
     private final String method;
 

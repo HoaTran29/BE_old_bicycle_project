@@ -3,10 +3,13 @@ package com.backend.old_bicycle_project.controller;
 import com.backend.old_bicycle_project.dto.request.InspectionEvaluationDTO;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.InspectionResponseDTO;
+import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.InspectionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -18,14 +21,12 @@ public class InspectionController {
 
     private final InspectionService inspectionService;
 
-    // TODO: Require Seller role and get sellerId from authenticated user (SecurityContextHolder)
     @PostMapping("/request/{productId}")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
     public ResponseEntity<ApiResponse<InspectionResponseDTO>> requestInspection(
             @PathVariable UUID productId,
-            @RequestParam UUID sellerId) {
-        
-        // Temporarily passing sellerId as RequestParam until Spring Security is fully wired
-        InspectionResponseDTO responseDTO = inspectionService.requestInspection(productId, sellerId);
+            @AuthenticationPrincipal User currentUser) {
+        InspectionResponseDTO responseDTO = inspectionService.requestInspection(productId, currentUser.getId());
         return ResponseEntity.ok(ApiResponse.<InspectionResponseDTO>builder()
                 .code(200)
                 .message("Inspection requested successfully")
@@ -33,15 +34,14 @@ public class InspectionController {
                 .build());
     }
 
-    // TODO: Require Inspector or Admin role
     @PostMapping("/evaluate/{productId}")
+    @PreAuthorize("hasAnyRole('INSPECTOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<InspectionResponseDTO>> evaluateInspection(
             @PathVariable UUID productId,
-            @RequestParam UUID inspectorId,
+            @AuthenticationPrincipal User currentUser,
             @RequestBody @Valid InspectionEvaluationDTO evaluationDTO) {
-        
-        // Temporarily passing inspectorId as RequestParam until Spring Security is fully wired
-        InspectionResponseDTO responseDTO = inspectionService.evaluateInspection(productId, inspectorId, evaluationDTO);
+        InspectionResponseDTO responseDTO =
+                inspectionService.evaluateInspection(productId, currentUser.getId(), evaluationDTO);
         return ResponseEntity.ok(ApiResponse.<InspectionResponseDTO>builder()
                 .code(200)
                 .message("Inspection evaluated successfully")

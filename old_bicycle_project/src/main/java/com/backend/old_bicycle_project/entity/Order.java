@@ -47,7 +47,7 @@ public class Order {
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private OrderStatus status = OrderStatus.PENDING;
+    private OrderStatus status = OrderStatus.pending;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method")

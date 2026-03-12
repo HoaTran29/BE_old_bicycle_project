@@ -17,7 +17,7 @@ public interface MessageService {
     /**
      * Get paginated messages for a conversation
      */
-    Page<MessageResponseDTO> getMessagesByConversation(UUID conversationId, Pageable pageable);
+    Page<MessageResponseDTO> getMessagesByConversation(UUID conversationId, UUID userId, Pageable pageable);
 
     /**
      * Mark all unread messages in a conversation as read for a specific user

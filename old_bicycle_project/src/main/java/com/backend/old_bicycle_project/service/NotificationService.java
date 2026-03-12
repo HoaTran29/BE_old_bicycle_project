@@ -22,7 +22,7 @@ public interface NotificationService {
     /**
      * Mark a specific notification as read
      */
-    void markAsRead(UUID notificationId);
+    void markAsRead(UUID notificationId, UUID userId);
 
     /**
      * Mark all notifications as read for a user

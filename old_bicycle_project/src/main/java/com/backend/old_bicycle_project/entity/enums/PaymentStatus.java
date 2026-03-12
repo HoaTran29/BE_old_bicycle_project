@@ -1,11 +1,11 @@
 package com.backend.old_bicycle_project.entity.enums;
 
 public enum PaymentStatus {
-    PENDING("pending"),
-    PROCESSING("processing"),
-    SUCCESS("success"),
-    FAILED("failed"),
-    REFUNDED("refunded");
+    pending("pending"),
+    processing("processing"),
+    success("success"),
+    failed("failed"),
+    refunded("refunded");
 
     private final String status;
 

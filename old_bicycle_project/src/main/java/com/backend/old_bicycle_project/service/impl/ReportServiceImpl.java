@@ -35,8 +35,8 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional
-    public ReportResponseDTO submitReport(ReportRequestDTO requestDTO) {
-        User reporter = userRepository.findById(requestDTO.getReporterId())
+    public ReportResponseDTO submitReport(UUID reporterId, ReportRequestDTO requestDTO) {
+        User reporter = userRepository.findById(reporterId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
         // Basic validation for target existence
@@ -58,7 +58,7 @@ public class ReportServiceImpl implements ReportService {
                 .targetType(requestDTO.getTargetType().toUpperCase())
                 .reason(requestDTO.getReason())
                 .description(requestDTO.getDescription())
-                .status(ReportStatus.PENDING)
+                .status(ReportStatus.pending)
                 .build();
 
         report = reportRepository.save(report);
@@ -81,7 +81,7 @@ public class ReportServiceImpl implements ReportService {
         report.setStatus(processDTO.getStatus());
         
         // If RESOLVED, apply actions to the target entity
-        if (processDTO.getStatus() == ReportStatus.RESOLVED) {
+        if (processDTO.getStatus() == ReportStatus.resolved) {
             applySanctions(report.getTargetType(), report.getTargetId());
         }
 
