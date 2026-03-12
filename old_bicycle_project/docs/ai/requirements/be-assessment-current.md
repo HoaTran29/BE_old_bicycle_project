@@ -5,9 +5,9 @@ Scope: `BE_old_bicycle_project/old_bicycle_project` backend compared against `..
 
 ## Executive Summary
 
-The old backend assessment is no longer a reliable baseline. The current repository is broader than the old report suggested, and this pass closes four of the highest-value backend gaps, but the system is still materially behind the SRS in the areas that determine production readiness.
+The old backend assessment is no longer a reliable baseline. The current repository is broader than the old report suggested, and this pass moves the transaction layer from "order skeleton" into a usable first phase with acceptance, payment request, webhook confirmation, refund request, and admin review. The system is still behind the SRS in several must-have areas, but the backend is no longer missing a real payment path.
 
-**Fixed backend progress assessment: 54%**
+**Fixed backend progress assessment: 60%**
 
 This number reflects SRS-aligned backend readiness, not just file count or module breadth.
 
@@ -19,10 +19,10 @@ This number reflects SRS-aligned backend readiness, not just file count or modul
 
 ### Why the score is not higher
 
-- `Payment` is still not delivered as a usable backend flow.
-- Several implemented modules are still only `Partial` because business rules, payment flow depth, WebSocket auth, or tests are missing.
-- Schema drift is improved, but delivery confidence still depends on applying the new Flyway changes in the real environments.
-- Automated verification is almost absent beyond a single context-load test.
+- Several implemented modules are still only `Partial` because business rules, payment flow depth, WebSocket auth, or admin workflow depth are missing.
+- The new payment flow is intentionally phase-1 simple: it supports upfront payment and refund handling, but not full gateway checkout orchestration, split payout, or automated refund execution.
+- Schema drift is improved again, but delivery confidence still depends on applying the new Flyway changes in the real environments.
+- Test coverage is better than before, but it is still service-level and far from full regression protection.
 
 ## Repository Snapshot
 
@@ -47,16 +47,16 @@ Weighted feature score:
 - `Partial` = 0.5
 - `Missing` = 0.0
 
-Raw feature score from the SRS matrix below: **57%**
+Raw feature score from the SRS matrix below: **62%**
 
-Readiness adjustment: **-3 points**
+Readiness adjustment: **-2 points**
 
 Reason for adjustment:
 
-- Test coverage is still too thin to treat `Partial` modules as near-production.
-- Order and messaging flows are now usable, but they still lack payment integration and automated regression checks.
+- A first payment/refund flow now exists, and targeted unit tests were added for order creation, payment request, webhook confirmation, and refund review.
+- The system still lacks end-to-end integration tests, real gateway connectivity in non-mock mode, and deeper regression coverage.
 
-Final assessed backend progress: **54%**
+Final assessed backend progress: **60%**
 
 ## SRS Matrix
 
@@ -69,7 +69,7 @@ Final assessed backend progress: **54%**
 | `F-005` | Bike Detail View | Must | `Partial` | Product detail endpoint exists and returns listing data with images. | Seller trust data, inspection transparency, and full SRS detail content are incomplete. |
 | `F-006` | Messaging System | Must | `Partial` | Conversations, messages, REST endpoints, and WebSocket push are implemented. REST read/list flows now derive user identity from Spring Security and the invalid latest-message JPQL was removed. | WebSocket sender identity is still not bound to JWT/STOMP auth, and there is no regression coverage yet. |
 | `F-007` | Wishlist | Should | `Partial` | Authenticated wishlist add, remove, and list endpoints now exist with repository/service/controller flow. | No tests yet, and richer product-state and notification behavior from the SRS is still thin. |
-| `F-008` | Deposit & Order | Must | `Partial` | Buyers can now create orders, list their orders, and authorized sellers/admins can confirm deposit, complete, or cancel the order. Product status is updated to `sold` on completion. | No payment/escrow gateway integration, refund/dispute handling, or automated tests. |
+| `F-008` | Deposit & Order | Must | `Partial` | Buyers can create orders with `partial/full` upfront intent, sellers can accept them, and authorized completion/cancellation paths now respect fund-hold states. Product status is updated to `sold` on completion. | Remaining payment phase, escrow-grade release policy, richer dispute handling, and integration-level tests are still missing. |
 | `F-009` | Seller Rating | Must | `Partial` | Review endpoints and service exist. User aggregate rating fields are present, and review submission is now tied to the authenticated user with a real order lifecycle behind it. | The broader order/payment flow is still incomplete, and there is no automated coverage for review eligibility. |
 | `F-010` | Inspection System | Should | `Partial` | Inspection request, evaluation, and fetch flows already exist. | Verified badge lifecycle, report transparency, and validity rules do not match `BR05-BR07`. |
 | `F-011` | Admin Dashboard | Must | `Partial` | Dashboard stats endpoint exists. Brand/category admin operations already started. | User management, listing moderation, dispute resolution, and richer admin analytics are still missing. |
@@ -77,38 +77,39 @@ Final assessed backend progress: **54%**
 | `F-013` | Notification System | Must | `Partial` | Notification center endpoints and service are implemented. User-facing endpoints now use the authenticated user, and single-notification read now verifies ownership. | Event coverage is still limited and there are no automated tests. |
 | `F-014` | Chatbot Support | Could | `Missing` | No backend module. | Entire feature is absent. |
 | `F-015` | Logistics Integration | Could | `Missing` | No backend module. | Entire feature is absent. |
-| `F-016` | Online Payment | Could | `Missing` | `Payment` entity exists. | No payment workflow, gateway integration, or usable API flow exists. |
+| `F-016` | Online Payment | Could | `Partial` | A usable phase-1 flow now exists: create payment request, generate transfer instructions and QR, receive SePay-style webhook confirmation, persist payment records, and support refund request/admin review. | Real outbound gateway integration, remaining-payment phase, payout/release automation, and full refund automation are still missing. |
 
 ## Readiness Gaps By Layer
 
 | Layer | Status | Assessment |
 | --- | --- | --- |
-| Database schema and migrations | `Partial` | Runtime enum naming now matches lowercase PostgreSQL enum values, and a new Flyway migration aligns `product_status` plus seller rating columns. Confidence still depends on applying the migration in real environments. |
+| Database schema and migrations | `Partial` | Runtime enum naming now matches lowercase PostgreSQL enum values, `V4` reduced previous schema drift, and `V5` adds order/payment/refund fields for the new transaction flow. Confidence still depends on applying the migrations in real environments. |
 | Authorization and ownership | `Partial` | Notification, inspection, review, report, and REST chat flows now derive identity from Spring Security. WebSocket chat auth and a few deeper business edges still need hardening. |
-| Business-rule enforcement | `Partial` | `BR01-BR07`, `BR11`, and parts of admin/order rules are not fully enforced in request validation or service logic. |
-| Automated testing | `Missing` | Test suite currently provides only a context-load test, which is not enough for delivery confidence. |
+| Business-rule enforcement | `Partial` | Transaction rules are stronger now: cash/manual and transfer/online paths are separated, held funds can no longer be cancelled directly, and refund flow is explicit. `BR01-BR07`, `BR11`, and deeper admin/order rules are still not fully enforced. |
+| Automated testing | `Partial` | The suite now includes focused service tests for `OrderServiceImpl`, `PaymentServiceImpl`, and `RefundServiceImpl` in addition to the context-load test. Integration coverage is still thin. |
 | API and DX foundations | `Partial` | Swagger, API wrapper, and exception handling exist, but the API surface is still inconsistent in a few newer modules. |
 
 ## Main Findings
 
 1. The old report understated the repository breadth. The backend is not a tiny skeleton anymore.
 2. The old report also understated the amount of unfinished work that still blocks SRS-ready delivery.
-3. The transaction layer has improved materially: `Wishlist` and `Order/Deposit` are no longer just entities, but `Payment` is still absent as a real backend flow.
-4. The schema drift problem has been reduced, but it is not fully retired until the new migration is applied in actual environments.
-5. The largest quality gap is missing automated tests.
+3. The transaction layer has improved materially: `Order`, `Payment`, and `Refund` now form a usable phase-1 business flow instead of isolated entities.
+4. The schema drift problem has been reduced again, but it is not fully retired until `V4` and `V5` are applied in actual environments.
+5. The largest remaining quality gaps are missing integration tests, incomplete SRS business rules in product/inspection flows, and missing WebSocket auth binding.
 
 ## Recommended Next Milestones
 
-### Milestone 1 - Reach 62%
+### Milestone 1 - Reach 66%
 
-- Add payment workflow or explicitly defer it with a documented non-goal.
-- Add regression tests for order, wishlist, chat ownership, and notifications.
+- Apply `V5__payment_refund_upgrade.sql` in dev/staging and wire the flow to real non-mock SePay configuration.
+- Add regression tests for wishlist, chat ownership, notifications, and the new transaction endpoints.
 - Bind WebSocket chat sender identity to authenticated sessions instead of caller-provided payload IDs.
 
-### Milestone 2 - Reach 70%
+### Milestone 2 - Reach 72%
 
 - Close `BR01-BR07` enforcement gaps in product and inspection flows.
 - Complete password reset and profile management.
+- Add remaining-payment and payout-release rules if the product direction still wants staged payments.
 
 ### Milestone 3 - Reach 78%+
 

@@ -1,6 +1,8 @@
 package com.backend.old_bicycle_project.entity;
 
+import com.backend.old_bicycle_project.entity.enums.PaymentGateway;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
+import com.backend.old_bicycle_project.entity.enums.PaymentPhase;
 import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -30,14 +32,33 @@ public class Payment {
     @Column(name = "amount", nullable = false)
     private BigDecimal amount;
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gateway")
+    private PaymentGateway gateway = PaymentGateway.manual;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "method", nullable = false)
     private PaymentMethod method;
 
     @Builder.Default
     @Enumerated(EnumType.STRING)
+    @Column(name = "phase")
+    private PaymentPhase phase = PaymentPhase.upfront;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
     @Column(name = "status")
     private PaymentStatus status = PaymentStatus.pending;
+
+    @Column(name = "gateway_order_code", unique = true)
+    private String gatewayOrderCode;
+
+    @Column(name = "checkout_url")
+    private String checkoutUrl;
+
+    @Column(name = "qr_code_url")
+    private String qrCodeUrl;
 
     @Column(name = "transaction_reference", unique = true)
     private String transactionReference;

@@ -13,6 +13,8 @@ public interface OrderService {
 
     List<OrderResponseDTO> getMyOrders(User currentUser);
 
+    OrderResponseDTO acceptOrder(UUID orderId, User currentUser);
+
     OrderResponseDTO confirmDeposit(UUID orderId, User currentUser);
 
     OrderResponseDTO completeOrder(UUID orderId, User currentUser);

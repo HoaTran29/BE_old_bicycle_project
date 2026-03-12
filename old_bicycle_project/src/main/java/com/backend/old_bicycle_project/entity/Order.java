@@ -1,7 +1,9 @@
 package com.backend.old_bicycle_project.entity;
 
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
+import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
+import com.backend.old_bicycle_project.entity.enums.PaymentOption;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -41,17 +43,43 @@ public class Order {
     @Column(name = "deposit_amount")
     private BigDecimal depositAmount;
 
+    @Column(name = "required_upfront_amount")
+    private BigDecimal requiredUpfrontAmount;
+
+    @Builder.Default
+    @Column(name = "paid_amount")
+    private BigDecimal paidAmount = BigDecimal.ZERO;
+
+    @Column(name = "remaining_amount")
+    private BigDecimal remainingAmount;
+
     @Column(name = "service_fee")
     private BigDecimal serviceFee;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_option")
+    private PaymentOption paymentOption = PaymentOption.partial;
 
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
     private OrderStatus status = OrderStatus.pending;
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "funding_status")
+    private OrderFundingStatus fundingStatus = OrderFundingStatus.unpaid;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method")
     private PaymentMethod paymentMethod;
+
+    @Column(name = "accepted_at")
+    private LocalDateTime acceptedAt;
+
+    @Column(name = "payment_deadline")
+    private LocalDateTime paymentDeadline;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

@@ -46,6 +46,17 @@ public class OrderController {
                 .build();
     }
 
+    @PatchMapping("/{orderId}/accept")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    public ApiResponse<OrderResponseDTO> acceptOrder(
+            @PathVariable UUID orderId,
+            @AuthenticationPrincipal User currentUser) {
+        return ApiResponse.<OrderResponseDTO>builder()
+                .message("Order accepted successfully")
+                .result(orderService.acceptOrder(orderId, currentUser))
+                .build();
+    }
+
     @PatchMapping("/{orderId}/confirm-deposit")
     @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
     public ApiResponse<OrderResponseDTO> confirmDeposit(

@@ -21,6 +21,8 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     List<Order> findAllByOrderByCreatedAtDesc();
 
+    java.util.Optional<Order> findByIdAndBuyerId(UUID orderId, UUID buyerId);
+
     @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.status = :status")
     BigDecimal sumTotalAmountByStatus(@Param("status") OrderStatus status);
 

@@ -18,7 +18,11 @@ public enum ErrorCode {
     FORBIDDEN(1010, "Forbidden action", HttpStatus.FORBIDDEN),
     INVALID_STATUS(1011, "Invalid product status for this operation", HttpStatus.BAD_REQUEST),
     RECORD_ALREADY_EXISTS(1012, "Record already exists", HttpStatus.CONFLICT),
-    RECORD_NOT_EXISTS(1013, "Record does not exist", HttpStatus.NOT_FOUND)
+    RECORD_NOT_EXISTS(1013, "Record does not exist", HttpStatus.NOT_FOUND),
+    PAYMENT_NOT_READY(1014, "Payment is not ready for this order", HttpStatus.BAD_REQUEST),
+    PAYMENT_VALIDATION_FAILED(1015, "Payment validation failed", HttpStatus.BAD_REQUEST),
+    REFUND_NOT_ALLOWED(1016, "Refund is not allowed for this order", HttpStatus.BAD_REQUEST),
+    PAYMENT_METHOD_NOT_SUPPORTED(1017, "Selected payment method is not supported for this action", HttpStatus.BAD_REQUEST)
     ;
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
