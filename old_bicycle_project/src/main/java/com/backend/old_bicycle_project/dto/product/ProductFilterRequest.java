@@ -8,15 +8,18 @@ import java.util.UUID;
 
 @Data
 public class ProductFilterRequest {
-    private String keyword;          // tìm theo title
+    private String keyword;
     private UUID brandId;
     private UUID categoryId;
     private UUID brakeTypeId;
     private UUID frameMaterialId;
     private ConditionType condition;
+    private String frameSize;
+    private String wheelSize;
+    private String groupset;
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
     private String province;
-    private Boolean hasInspection;   // lọc xe có Verified Badge
-    private String sortBy;           // "price_asc", "price_desc", "newest"
+    private Boolean hasInspection;
+    private String sortBy;
 }

@@ -36,26 +36,34 @@ public class InspectionServiceImpl implements InspectionService {
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
         if (!product.getSeller().getId().equals(sellerId)) {
-            throw new AppException(ErrorCode.FORBIDDEN); // Seller is not the owner
+            throw new AppException(ErrorCode.FORBIDDEN);
         }
 
-        if (product.getStatus() != ProductStatus.pending) {
-            throw new AppException(ErrorCode.INVALID_STATUS); // Can only request if pending
+        if (product.getStatus() != ProductStatus.active
+                && product.getStatus() != ProductStatus.inspected_failed
+                && product.getStatus() != ProductStatus.inspected_passed) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
-        if (inspectionRepository.existsByProductId(productId)) {
-            throw new AppException(ErrorCode.RECORD_ALREADY_EXISTS); // Already requested
-        }
+        Inspection inspection = inspectionRepository.findByProductId(productId)
+                .orElseGet(() -> Inspection.builder()
+                        .product(product)
+                        .build());
 
-        // Create new inspection record
-        Inspection inspection = Inspection.builder()
-                .product(product)
-                .passed(false) // default
-                .build();
-        
+        inspection.setInspector(null);
+        inspection.setOverallScore(null);
+        inspection.setFrameScore(null);
+        inspection.setForkScore(null);
+        inspection.setBrakesScore(null);
+        inspection.setDrivetrainScore(null);
+        inspection.setWheelsScore(null);
+        inspection.setWearPercentage(null);
+        inspection.setExpertNotes(null);
+        inspection.setPassed(false);
+        inspection.setReportFileUrl(null);
+        inspection.setValidUntil(null);
         inspection = inspectionRepository.save(inspection);
-        
-        // Update product status
+
         product.setStatus(ProductStatus.pending_inspection);
         productRepository.save(product);
 
@@ -69,23 +77,19 @@ public class InspectionServiceImpl implements InspectionService {
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
         Inspection inspection = inspectionRepository.findByProductId(productId)
-                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS)); // Use appropriate ErrorCode
+                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
 
         User inspector = userRepository.findById(inspectorId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
-
-        // Note: Ideally check if inspector has ROLE_INSPECTOR here (could also be done via Spring Security @PreAuthorize in Controller)
 
         if (product.getStatus() != ProductStatus.pending_inspection) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
-        // Calculate overall score (Average of 5 components)
-        double averageScore = (dto.getFrameScore() + dto.getForkScore() + dto.getBrakesScore() +
-                dto.getDrivetrainScore() + dto.getWheelsScore()) / 5.0;
+        double averageScore = (dto.getFrameScore() + dto.getForkScore() + dto.getBrakesScore()
+                + dto.getDrivetrainScore() + dto.getWheelsScore()) / 5.0;
         BigDecimal overallScore = BigDecimal.valueOf(averageScore).setScale(1, RoundingMode.HALF_UP);
 
-        // Update Inspection
         inspection.setInspector(inspector);
         inspection.setFrameScore(dto.getFrameScore());
         inspection.setForkScore(dto.getForkScore());
@@ -96,13 +100,9 @@ public class InspectionServiceImpl implements InspectionService {
         inspection.setExpertNotes(dto.getExpertNotes());
         inspection.setOverallScore(overallScore);
         inspection.setPassed(dto.getPassed());
-        
-        // SRS BR06: inspection stays valid for 7 days or until the product is sold.
         inspection.setValidUntil(LocalDateTime.now().plusDays(7));
-
         inspection = inspectionRepository.save(inspection);
 
-        // Update Product status based on passed/failed
         product.setStatus(dto.getPassed() ? ProductStatus.inspected_passed : ProductStatus.inspected_failed);
         productRepository.save(product);
 

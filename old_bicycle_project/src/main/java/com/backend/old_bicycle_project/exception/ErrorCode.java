@@ -24,8 +24,9 @@ public enum ErrorCode {
     REFUND_NOT_ALLOWED(1016, "Refund is not allowed for this order", HttpStatus.BAD_REQUEST),
     PAYMENT_METHOD_NOT_SUPPORTED(1017, "Selected payment method is not supported for this action", HttpStatus.BAD_REQUEST),
     INVALID_RESET_TOKEN(1018, "Password reset token is invalid or expired", HttpStatus.BAD_REQUEST),
-    CURRENT_PASSWORD_INVALID(1019, "Current password is incorrect", HttpStatus.BAD_REQUEST)
-    ;
+    CURRENT_PASSWORD_INVALID(1019, "Current password is incorrect", HttpStatus.BAD_REQUEST),
+    PRODUCT_TECHNICAL_FIELDS_REQUIRED(1020, "Frame size and wheel size are required", HttpStatus.BAD_REQUEST),
+    PRODUCT_MINIMUM_IMAGES_REQUIRED(1021, "At least 3 product images are required", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;
