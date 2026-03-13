@@ -12,7 +12,7 @@ public interface MessageService {
     /**
      * Save and process a new chat message
      */
-    MessageResponseDTO sendMessage(MessageRequestDTO requestDTO);
+    MessageResponseDTO sendMessage(MessageRequestDTO requestDTO, UUID senderId);
 
     /**
      * Get paginated messages for a conversation

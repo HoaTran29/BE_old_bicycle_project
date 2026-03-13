@@ -18,7 +18,6 @@ public class MessageRequestDTO {
     @NotNull(message = "Conversation ID is required")
     private UUID conversationId;
 
-    @NotNull(message = "Sender ID is required")
     private UUID senderId;
 
     @NotBlank(message = "Content cannot be empty")

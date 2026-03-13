@@ -32,11 +32,11 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     @Transactional
-    public MessageResponseDTO sendMessage(MessageRequestDTO requestDTO) {
+    public MessageResponseDTO sendMessage(MessageRequestDTO requestDTO, UUID senderId) {
         Conversation conversation = conversationRepository.findById(requestDTO.getConversationId())
                 .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
 
-        User sender = userRepository.findById(requestDTO.getSenderId())
+        User sender = userRepository.findById(senderId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
         validateParticipant(conversation, sender.getId());

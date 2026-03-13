@@ -5,6 +5,8 @@ import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.ConversationResponseDTO;
 import com.backend.old_bicycle_project.dto.response.MessageResponseDTO;
 import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.service.ConversationService;
 import com.backend.old_bicycle_project.service.MessageService;
 import jakarta.validation.Valid;
@@ -19,6 +21,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
 
@@ -94,13 +97,15 @@ public class ChatController {
      * 2. "/queue/user/{recipientId}" -> For global notification updates
      */
     @MessageMapping("/chat.sendMessage")
-    public void sendMessage(@Payload @Valid MessageRequestDTO chatMessage) {
+    public void sendMessage(@Payload @Valid MessageRequestDTO chatMessage, Principal principal) {
+        UUID senderId = resolveSenderId(principal);
+
         // Save to DB
-        MessageResponseDTO savedMessage = messageService.sendMessage(chatMessage);
+        MessageResponseDTO savedMessage = messageService.sendMessage(chatMessage, senderId);
         
         // Find recipient logic
         ConversationResponseDTO conversation = conversationService.getConversationById(chatMessage.getConversationId());
-        UUID recipientId = chatMessage.getSenderId().equals(conversation.getBuyerId()) 
+        UUID recipientId = savedMessage.getSenderId().equals(conversation.getBuyerId())
                 ? conversation.getSellerId() 
                 : conversation.getBuyerId();
 
@@ -116,5 +121,12 @@ public class ChatController {
                 "/queue/messages",
                 savedMessage
         );
+    }
+
+    private UUID resolveSenderId(Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        return UUID.fromString(principal.getName());
     }
 }

@@ -7,7 +7,7 @@ Scope: `BE_old_bicycle_project/old_bicycle_project` backend compared against `..
 
 The old backend assessment is no longer a reliable baseline. The current repository is broader than the old report suggested, and this pass moves the transaction layer from "order skeleton" into a usable first phase with acceptance, payment request, webhook confirmation, refund request, and admin review. The system is still behind the SRS in several must-have areas, but the backend is no longer missing a real payment path.
 
-**Fixed backend progress assessment: 60%**
+**Fixed backend progress assessment: 61%**
 
 This number reflects SRS-aligned backend readiness, not just file count or module breadth.
 
@@ -19,7 +19,7 @@ This number reflects SRS-aligned backend readiness, not just file count or modul
 
 ### Why the score is not higher
 
-- Several implemented modules are still only `Partial` because business rules, payment flow depth, WebSocket auth, or admin workflow depth are missing.
+- Several implemented modules are still only `Partial` because business rules, payment flow depth, or admin workflow depth are missing.
 - The new payment flow is intentionally phase-1 simple: it supports upfront payment and refund handling, but not full gateway checkout orchestration, split payout, or automated refund execution.
 - Schema drift is improved again, but delivery confidence still depends on applying the new Flyway changes in the real environments.
 - Test coverage is better than before, but it is still service-level and far from full regression protection.
@@ -49,14 +49,14 @@ Weighted feature score:
 
 Raw feature score from the SRS matrix below: **62%**
 
-Readiness adjustment: **-2 points**
+Readiness adjustment: **-1 point**
 
 Reason for adjustment:
 
-- A first payment/refund flow now exists, and targeted unit tests were added for order creation, payment request, webhook confirmation, and refund review.
+- A first payment/refund flow now exists, targeted unit tests were added for order creation, payment request, webhook confirmation, and refund review, and WebSocket chat sender identity is now derived from authenticated STOMP sessions.
 - The system still lacks end-to-end integration tests, real gateway connectivity in non-mock mode, and deeper regression coverage.
 
-Final assessed backend progress: **60%**
+Final assessed backend progress: **61%**
 
 ## SRS Matrix
 
@@ -67,7 +67,7 @@ Final assessed backend progress: **60%**
 | `F-003` | Search & Filter | Must | `Done` | Public search endpoint with pagination and core filter fields is already usable. | Basic search/filter is covered. Remaining gaps belong to `F-004`, not this base feature. |
 | `F-004` | Advanced Filter | Must | `Partial` | Technical filters exist for brand, category, brake, frame material, condition, price, and province. | Groupset, verified/video, frame-size, wheel-size, and full inspection-aware filtering are incomplete. |
 | `F-005` | Bike Detail View | Must | `Partial` | Product detail endpoint exists and returns listing data with images. | Seller trust data, inspection transparency, and full SRS detail content are incomplete. |
-| `F-006` | Messaging System | Must | `Partial` | Conversations, messages, REST endpoints, and WebSocket push are implemented. REST read/list flows now derive user identity from Spring Security and the invalid latest-message JPQL was removed. | WebSocket sender identity is still not bound to JWT/STOMP auth, and there is no regression coverage yet. |
+| `F-006` | Messaging System | Must | `Partial` | Conversations, messages, REST endpoints, and WebSocket push are implemented. REST read/list flows derive user identity from Spring Security, the invalid latest-message JPQL was removed, and STOMP `CONNECT/SEND/SUBSCRIBE` frames are now protected by a JWT-based inbound channel interceptor so chat sender identity no longer comes from caller payload. | Real-time integration coverage is still missing, and the chat module still needs broader regression tests for delivery and unread-state behavior. |
 | `F-007` | Wishlist | Should | `Partial` | Authenticated wishlist add, remove, and list endpoints now exist with repository/service/controller flow. | No tests yet, and richer product-state and notification behavior from the SRS is still thin. |
 | `F-008` | Deposit & Order | Must | `Partial` | Buyers can create orders with `partial/full` upfront intent, sellers can accept them, and authorized completion/cancellation paths now respect fund-hold states. Product status is updated to `sold` on completion. | Remaining payment phase, escrow-grade release policy, richer dispute handling, and integration-level tests are still missing. |
 | `F-009` | Seller Rating | Must | `Partial` | Review endpoints and service exist. User aggregate rating fields are present, and review submission is now tied to the authenticated user with a real order lifecycle behind it. | The broader order/payment flow is still incomplete, and there is no automated coverage for review eligibility. |
@@ -84,9 +84,9 @@ Final assessed backend progress: **60%**
 | Layer | Status | Assessment |
 | --- | --- | --- |
 | Database schema and migrations | `Partial` | Runtime enum naming now matches lowercase PostgreSQL enum values, `V4` reduced previous schema drift, and `V5` adds order/payment/refund fields for the new transaction flow. Confidence still depends on applying the migrations in real environments. |
-| Authorization and ownership | `Partial` | Notification, inspection, review, report, and REST chat flows now derive identity from Spring Security. WebSocket chat auth and a few deeper business edges still need hardening. |
+| Authorization and ownership | `Partial` | Notification, inspection, review, report, REST chat, and STOMP chat flows now derive identity from authenticated context instead of caller-supplied IDs. A few deeper business edges still need hardening. |
 | Business-rule enforcement | `Partial` | Transaction rules are stronger now: cash/manual and transfer/online paths are separated, held funds can no longer be cancelled directly, and refund flow is explicit. `BR01-BR07`, `BR11`, and deeper admin/order rules are still not fully enforced. |
-| Automated testing | `Partial` | The suite now includes focused service tests for `OrderServiceImpl`, `PaymentServiceImpl`, and `RefundServiceImpl` in addition to the context-load test. Integration coverage is still thin. |
+| Automated testing | `Partial` | The suite now includes focused service tests for `OrderServiceImpl`, `PaymentServiceImpl`, and `RefundServiceImpl`, plus `WebSocketAuthChannelInterceptorTest`, in addition to the context-load test. Integration coverage is still thin. |
 | API and DX foundations | `Partial` | Swagger, API wrapper, and exception handling exist, but the API surface is still inconsistent in a few newer modules. |
 
 ## Main Findings
@@ -95,15 +95,15 @@ Final assessed backend progress: **60%**
 2. The old report also understated the amount of unfinished work that still blocks SRS-ready delivery.
 3. The transaction layer has improved materially: `Order`, `Payment`, and `Refund` now form a usable phase-1 business flow instead of isolated entities.
 4. The schema drift problem has been reduced again, but it is not fully retired until `V4` and `V5` are applied in actual environments.
-5. The largest remaining quality gaps are missing integration tests, incomplete SRS business rules in product/inspection flows, and missing WebSocket auth binding.
+5. The largest remaining quality gaps are missing integration tests, incomplete SRS business rules in product/inspection flows, and unfinished account-management features.
 
 ## Recommended Next Milestones
 
 ### Milestone 1 - Reach 66%
 
 - Apply `V5__payment_refund_upgrade.sql` in dev/staging and wire the flow to real non-mock SePay configuration.
-- Add regression tests for wishlist, chat ownership, notifications, and the new transaction endpoints.
-- Bind WebSocket chat sender identity to authenticated sessions instead of caller-provided payload IDs.
+- Add regression tests for wishlist, notifications, and real-time chat delivery/unread-state behavior.
+- Start password reset and profile-management delivery so `F-001` can move closer to `Done`.
 
 ### Milestone 2 - Reach 72%
 
