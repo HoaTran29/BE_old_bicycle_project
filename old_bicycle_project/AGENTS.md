@@ -78,6 +78,10 @@ If one link in that chain is missing, the feature is at best `Partial`.
 ## Knowledge Capture
 
 - After any large task involving code creation, code edits, refactoring, architecture changes, debugging, or any work that introduces useful new programming knowledge, write or update a beginner-friendly knowledge note in `docs/knowledge/`.
+- After completing any meaningful backend slice, feature, bug fix, or architectural improvement, include the end-to-end flow of that slice in the knowledge note whenever a real request/response path exists.
+- The default backend flow to explain is:
+  `client -> controller -> service -> repository -> database -> response`
+- If the feature flow also depends on other important layers such as security, storage, messaging, or third-party integrations, explain where those layers join the main flow instead of pretending the path is simpler than it really is.
 - Write knowledge notes in Vietnamese with proper diacritics by default, with wording suitable for a first-year university student who is new to programming.
 - Assume the reader may only know basic ideas such as variables, functions, classes, and HTTP at a very early level.
 - Explain both the underlying concept and how that concept was applied in the task that was just completed.
@@ -94,6 +98,16 @@ If one link in that chain is missing, the feature is at best `Partial`.
 - Separate clearly between `definition`, `example`, and `application in the project` so the reader does not have to infer the structure.
 - Use short sections, short paragraphs, and simple sentences. Prefer clarity over compactness.
 - Make cause-and-effect explicit. State not only what changed, but why that change prevents a bug, improves safety, or matches the SRS better.
+- When documenting a backend flow, include a small step-by-step walkthrough of what each layer is doing:
+  1. what the client sends
+  2. what the controller receives and delegates
+  3. what the service decides
+  4. what the repository reads or writes
+  5. what changes in the database
+  6. what response goes back to the client
+- For knowledge notes about APIs, auth, payments, chat, or any other runtime backend flow, include at least one diagram. Prefer Mermaid sequence diagrams. If Mermaid would be misleading or too heavy, use a simple ASCII flow diagram instead.
+- After the diagram, explain the flow again in plain Vietnamese as if teaching a first-year student. Do not assume the diagram alone is self-explanatory.
+- When useful, map the flow back to the concrete project files that implement each step so the reader can jump from the explanation to the code.
 - Before creating a new knowledge note, review `docs/knowledge/` to see whether the topic already exists.
 - If a related note already exists, extend it with missing definitions, missing examples, or clearer explanations instead of creating duplicate content.
 - If no related note exists, create a new Markdown file under `docs/knowledge/` with a focused title.
