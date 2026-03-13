@@ -1,338 +1,339 @@
-# Password Reset Va Profile Management Cho Nguoi Moi Hoc
+# Password Reset và Profile Management Cho Người Mới Học
 
-Ngay cap nhat: 2026-03-13  
-Pham vi: Cac chuc nang account management moi duoc them vao backend
+Ngày cập nhật: 2026-03-13  
+Phạm vi: giải thích luồng `forgot password`, `reset password`, `change password`, và `update profile` trong backend hiện tại.
 
-## 1. Boc canh
+## 1. Bối cảnh
 
-Trong mot he thong co dang nhap, chi co `register` va `login` la chua du.
+Trong một hệ thống đăng nhập, chỉ có `register` và `login` là chưa đủ.
 
-Nguoi dung thuc te se gap cac tinh huong nhu:
+Người dùng thật sẽ gặp các tình huống như:
 
-- quen mat khau
-- muon doi mat khau
-- muon cap nhat so dien thoai
-- muon doi avatar
-- muon cap nhat dia chi mac dinh
+- quên mật khẩu
+- muốn đổi mật khẩu
+- muốn cập nhật số điện thoại
+- muốn thay avatar
+- muốn sửa địa chỉ mặc định
 
-Neu backend khong co cac chuc nang nay, thi tai khoan tuy dang nhap duoc nhung van chua duoc xem la hoan chinh.
+Vì vậy, backend cần có nhóm chức năng gọi là `account management`, tức là quản lý tài khoản sau khi đã đăng nhập hoặc khi bị mất quyền đăng nhập.
 
-## 2. Dinh nghia can biet
+## 2. Các khái niệm cần biết
 
-### Password reset la gi?
+### Password reset là gì?
 
-`Password reset` la luong dat lai mat khau khi nguoi dung khong con nho mat khau cu.
+`Password reset` là luồng đặt lại mật khẩu khi người dùng **không còn nhớ mật khẩu cũ**.
 
-Day khac voi `change password`.
+Nó khác với `change password`.
 
-- `change password`: user dang dang nhap va biet mat khau cu
-- `reset password`: user quen mat khau va can mot cach an toan de dat lai
+- `change password`: người dùng vẫn đăng nhập được và biết mật khẩu hiện tại
+- `reset password`: người dùng quên mật khẩu và cần một cách an toàn để tạo mật khẩu mới
 
-### Profile management la gi?
+### Profile management là gì?
 
-`Profile management` la nhom chuc nang cho phep user cap nhat thong tin ca nhan.
+`Profile management` là nhóm chức năng cho phép người dùng cập nhật thông tin cá nhân như:
 
-Trong project nay, nhung thong tin do la:
-
-- ho
-- ten
-- so dien thoai
+- họ
+- tên
+- số điện thoại
 - avatar
-- dia chi mac dinh
+- địa chỉ mặc định
 
-### Reset token la gi?
+### Reset token là gì?
 
-`Reset token` la mot ma tam thoi do backend tao ra de xac nhan rang yeu cau dat lai mat khau la hop le.
+`Reset token` là một mã tạm thời do backend tạo ra để chứng minh rằng yêu cầu đặt lại mật khẩu là hợp lệ.
 
-Co the hieu don gian:
+Hiểu rất đơn giản:
 
-- user bao "toi quen mat khau"
-- backend tao mot ma tam thoi
-- backend gui ma nay qua email
-- khi user bam vao link reset, backend kiem tra ma do con hop le khong
+1. người dùng nói "tôi quên mật khẩu"
+2. backend tạo một mã tạm thời
+3. backend gửi mã này qua email
+4. khi người dùng bấm vào link reset, backend kiểm tra mã đó còn hợp lệ không
 
-## 3. Vi sao khong dat lai mat khau ngay khi nguoi dung nhap email?
+## 3. Luồng tổng quát của `forgot password` và `reset password`
 
-Vi neu chi can biet email la doi duoc mat khau, thi bat ky ai biet email cua ban deu co the chiem tai khoan.
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AuthController
+    participant AuthService
+    participant UserRepository
+    participant EmailService
+    participant PasswordResetTokenRepository
+    participant Database
+    participant MailServer
 
-Cho nen backend phai co them mot bang chung nua.  
-Bang chung o phase nay la: `password reset token`.
+    Client->>AuthController: POST /api/auth/forgot-password\n{ email }
+    AuthController->>AuthService: requestPasswordReset(request)
+    AuthService->>UserRepository: findByEmail(email)
+    UserRepository->>Database: SELECT user by email
+    Database-->>UserRepository: user hoặc null
+    UserRepository-->>AuthService: user hoặc empty
 
-Flow dung la:
+    alt User tồn tại
+        AuthService->>EmailService: createPasswordResetToken(user)
+        EmailService->>PasswordResetTokenRepository: deleteByUser(user)
+        PasswordResetTokenRepository->>Database: DELETE old reset tokens
+        EmailService->>PasswordResetTokenRepository: save(new token)
+        PasswordResetTokenRepository->>Database: INSERT password_reset_tokens
+        EmailService->>MailServer: sendPasswordResetEmail(user, token)
+    end
 
-1. User nhap email.
-2. Backend tao token tam thoi.
-3. Backend gui token do qua email.
-4. User mo link reset.
-5. Backend kiem tra token.
-6. Neu token hop le thi moi cho doi mat khau.
+    AuthService-->>AuthController: thông báo chung
+    AuthController-->>Client: 200 OK
 
-## 4. Tai sao can bang `password_reset_tokens` rieng?
+    Client->>AuthController: POST /api/auth/reset-password\n{ token, newPassword }
+    AuthController->>AuthService: resetPassword(request)
+    AuthService->>EmailService: findPasswordResetToken(token)
+    EmailService->>PasswordResetTokenRepository: findByToken(token)
+    PasswordResetTokenRepository->>Database: SELECT token
+    Database-->>PasswordResetTokenRepository: token row hoặc null
+    PasswordResetTokenRepository-->>EmailService: token hoặc empty
+    EmailService-->>AuthService: token hoặc empty
+    AuthService->>Database: UPDATE users SET password_hash = ...
+    AuthService->>Database: DELETE refresh_tokens WHERE user_id = ...
+    AuthService->>Database: DELETE password_reset_tokens WHERE user_id = ...
+    AuthService-->>AuthController: thông báo thành công
+    AuthController-->>Client: 200 OK
+```
 
-Day la mot diem rat quan trong.
+## 4. Giải thích luồng `client -> controller -> service -> repository -> database -> response`
 
-Project da co:
+### 4.1. Phần `forgot password`
 
-- `email_verifications`
-- `refresh_tokens`
+#### Client gửi gì?
 
-Nhung khong nen dung chung chung mot bang cho tat ca.
-
-Tai sao?
-
-Vi moi loai token co y nghia khac nhau:
-
-- `email_verification`: xac thuc email
-- `refresh_token`: gia han dang nhap
-- `password_reset_token`: dat lai mat khau
-
-Neu gom chung lai, code se rat de roi:
-
-- token nay dung cho viec gi
-- luc nao het han
-- xoa theo rule nao
-
-Tach rieng bang se de hieu va de bao tri hon.
-
-## 5. Password policy la gi?
-
-`Password policy` la tap cac quy tac bat buoc cua mat khau.
-
-Trong phase nay, backend enforce:
-
-- toi thieu 8 ky tu
-- co it nhat 1 chu hoa
-- co it nhat 1 chu so
-
-Vi du:
-
-- `abc12345` -> sai, vi khong co chu hoa
-- `Abcdefgh` -> sai, vi khong co so
-- `Abcd1234` -> dung
-
-Day la mot quy tac don gian, nhung tot hon rat nhieu so voi chi kiem tra do dai.
-
-## 6. Tai sao cung mot password policy phai dung o nhieu noi?
-
-Nguoi moi hoc hay mac loi nay:
-
-- register co mot rule
-- reset password lai mot rule khac
-- change password lai mot rule khac nua
-
-Ket qua la he thong khong dong nhat.
-
-Dung hon la:
-
-- register phai dung cung policy
-- reset password phai dung cung policy
-- change password phai dung cung policy
-
-Noi cach khac, da goi la "chuan mat khau" thi phai dung lai o moi diem thay doi mat khau.
-
-## 7. Phase nay da ap dung nhu the nao?
-
-### A. Them forgot password
-
-Backend them endpoint:
+Client gửi email vào endpoint:
 
 - `POST /api/auth/forgot-password`
 
-Nhiem vu cua endpoint nay:
+File nhận request:
 
-- nhan email
-- neu user ton tai thi tao reset token
-- gui email reset
-- van tra thong bao chung chung
+- `src/main/java/com/backend/old_bicycle_project/controller/AuthController.java`
 
-Thong bao chung chung rat quan trong.
+#### Controller làm gì?
 
-Tai sao?
+Controller nhận request rồi chuyển tiếp sang service.
 
-Neu backend tra:
+Điểm quan trọng:
 
-- "email ton tai"
-- "email khong ton tai"
+- controller **không tự tìm user**
+- controller **không tự tạo token**
+- controller **không tự gửi mail**
 
-thi nguoi xau co the dung endpoint nay de doan xem email nao co tai khoan trong he thong.
+Nó chỉ đóng vai trò "cửa tiếp nhận".
 
-Cho nen backend tra mot cau chung:
+#### Service làm gì?
 
-- `Neu email ton tai, he thong da gui huong dan dat lai mat khau.`
+Trong `AuthService.requestPasswordReset(...)`:
 
-Day la cach giam `user enumeration`.
+1. tìm user theo email
+2. nếu user tồn tại thì gọi `EmailService`
+3. `EmailService` tạo reset token mới
+4. `EmailService` gửi mail
+5. service luôn trả về **một câu trả lời chung**
 
-### B. Them reset password
+Điểm này rất quan trọng về bảo mật.
 
-Backend them endpoint:
+Hệ thống không nên trả:
+
+- "email tồn tại"
+- "email không tồn tại"
+
+Vì nếu trả khác nhau, người xấu có thể dò email nào đã đăng ký tài khoản.
+
+#### Repository làm gì?
+
+Trong flow này có 2 repository chính:
+
+- `UserRepository`: tìm user theo email
+- `PasswordResetTokenRepository`: xóa token cũ và lưu token mới
+
+#### Database thay đổi gì?
+
+Nếu user tồn tại:
+
+- token cũ của user bị xóa
+- token mới được insert vào bảng `password_reset_tokens`
+
+Nếu user không tồn tại:
+
+- không có gì thay đổi trong database
+
+#### Response trả gì?
+
+Backend vẫn trả một thông báo chung, ví dụ:
+
+- `Nếu email tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu.`
+
+Đây là một kỹ thuật bảo mật cơ bản nhưng rất nên có.
+
+### 4.2. Phần `reset password`
+
+#### Client gửi gì?
+
+Client gửi:
+
+- `token`
+- `newPassword`
+
+vào endpoint:
 
 - `POST /api/auth/reset-password`
 
-Endpoint nay:
+#### Controller làm gì?
 
-- nhan `token`
-- nhan `newPassword`
-- kiem tra token co ton tai khong
-- kiem tra token con han khong
-- kiem tra password policy
-- doi mat khau moi
+Controller chuyển request vào `AuthService.resetPassword(...)`.
 
-### C. Thu hoi refresh token sau khi doi/reset mat khau
+#### Service làm gì?
 
-Day la mot rule bao mat tot va rat nen co.
+Service thực hiện các bước:
 
-Vi du:
+1. kiểm tra password policy
+2. tìm reset token
+3. kiểm tra token có hết hạn không
+4. đổi `password_hash` của user
+5. xóa toàn bộ `refresh token` cũ
+6. xóa toàn bộ `password reset token` của user
 
-1. User dang login tren 3 thiet bi.
-2. User reset password vi nghi tai khoan co van de.
-3. Neu refresh token cu van con song, cac session cu van co the tiep tuc hoat dong.
+#### Repository làm gì?
 
-Cho nen phase nay backend da:
+Các lớp tham gia:
 
-- xoa refresh token sau khi `reset password`
-- xoa refresh token sau khi `change password`
+- `PasswordResetTokenRepository`: đọc token và xóa token
+- `RefreshTokenService` -> `RefreshTokenRepository`: xóa toàn bộ refresh token cũ
+- `UserRepository`: lưu mật khẩu mới
 
-Dieu nay buoc user dang nhap lai bang mat khau moi.
+#### Database thay đổi gì?
 
-## 8. Change password khac reset password nhu the nao?
+- dòng `users.password_hash` được cập nhật
+- các dòng trong `refresh_tokens` của user bị xóa
+- các dòng trong `password_reset_tokens` của user bị xóa
 
-### Change password
+#### Response trả gì?
 
-Ap dung khi:
+Response trả thông báo thành công, yêu cầu người dùng đăng nhập lại.
 
-- user dang dang nhap
-- user biet mat khau hien tai
+Điều này hợp lý vì các phiên cũ đã bị thu hồi.
 
-Flow:
+## 5. Luồng `change password` và `update profile`
 
-1. nhap current password
-2. nhap new password
-3. backend so khop current password
-4. neu dung moi cho doi
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AuthController
+    participant AuthService
+    participant UserRepository
+    participant RefreshTokenService
+    participant RefreshTokenRepository
+    participant Database
 
-### Reset password
+    Client->>AuthController: PATCH /api/auth/change-password\n{ currentPassword, newPassword }
+    AuthController->>AuthService: changePassword(currentUser, request)
+    AuthService->>UserRepository: findById(currentUser.id)
+    UserRepository->>Database: SELECT user
+    Database-->>UserRepository: user
+    AuthService->>AuthService: kiểm tra currentPassword
+    AuthService->>UserRepository: save(user với password mới)
+    UserRepository->>Database: UPDATE users
+    AuthService->>RefreshTokenService: deleteAllByUser(user)
+    RefreshTokenService->>RefreshTokenRepository: deleteAllByUser(user)
+    RefreshTokenRepository->>Database: DELETE refresh_tokens
+    AuthService-->>AuthController: thông báo thành công
+    AuthController-->>Client: 200 OK
 
-Ap dung khi:
-
-- user quen mat khau
-- user khong dang dang nhap hoac khong dung duoc mat khau cu
-
-Flow:
-
-1. xin reset bang email
-2. nhan token
-3. dung token de dat lai mat khau
-
-## 9. Profile update trong phase nay lam gi?
-
-Backend them endpoint:
-
-- `PATCH /api/auth/profile`
-
-Endpoint nay cho phep cap nhat:
-
-- `firstName`
-- `lastName`
-- `phone`
-- `avatarUrl`
-- `defaultAddress`
-
-Va `GET /api/auth/me` cung duoc mo rong de tra ve cac field nay, de frontend co the hien thi profile day du.
-
-## 10. Vi du cu the
-
-### Vi du 1: Quen mat khau
-
-1. User nhap `lan@example.com`.
-2. Backend tao `reset-token-123`.
-3. Backend gui email co link:
-
-```text
-http://frontend/reset-password?token=reset-token-123
+    Client->>AuthController: PATCH /api/auth/profile\n{ firstName, lastName, phone, avatarUrl, defaultAddress }
+    AuthController->>AuthService: updateProfile(currentUser, request)
+    AuthService->>UserRepository: findById(currentUser.id)
+    UserRepository->>Database: SELECT user
+    Database-->>UserRepository: user
+    AuthService->>UserRepository: save(user đã cập nhật profile)
+    UserRepository->>Database: UPDATE users
+    AuthService-->>AuthController: UserInfo mới
+    AuthController-->>Client: 200 OK
 ```
 
-4. User mo link, nhap mat khau moi `StrongPass1`.
-5. Backend kiem tra token va doi mat khau.
+## 6. Vì sao đổi hoặc reset mật khẩu lại phải xóa refresh token?
 
-### Vi du 2: Doi mat khau khi dang dang nhap
+Đây là một ý rất quan trọng.
 
-1. User dang dang nhap.
-2. Goi `PATCH /api/auth/change-password`.
-3. Gui:
+### Tình huống ví dụ
 
-```json
-{
-  "currentPassword": "OldPass1",
-  "newPassword": "FreshPass2"
-}
-```
+Giả sử:
 
-4. Backend kiem tra `OldPass1` co dung khong.
-5. Neu dung, backend luu mat khau moi va thu hoi refresh token cu.
+1. bạn đang đăng nhập trên điện thoại
+2. bạn cũng đăng nhập trên laptop
+3. ai đó biết được refresh token cũ của bạn
+4. bạn phát hiện có vấn đề và đổi mật khẩu
 
-### Vi du 3: Cap nhat profile
+Nếu hệ thống **không xóa refresh token cũ**:
 
-```json
-{
-  "firstName": "Mai",
-  "lastName": "Nguyen",
-  "phone": "0988111222",
-  "avatarUrl": "https://cdn.example/avatar.png",
-  "defaultAddress": "123 Nguyen Trai"
-}
-```
+- thiết bị hoặc phiên cũ vẫn có thể xin access token mới
+- tài khoản vẫn chưa thực sự an toàn
 
-Backend se cap nhat cac truong nay cho user dang dang nhap.
+Cho nên trong code hiện tại:
 
-## 11. Nhung loi nguoi moi hoc hay gap
+- `resetPassword(...)` xóa refresh token
+- `changePassword(...)` cũng xóa refresh token
+- `logout(...)` cũng xóa refresh token
 
-### Loi 1: Nghi reset password va change password la mot
+Đây là cách backend thu hồi các phiên cũ.
 
-Khong dung.  
-Mot cai can current password.  
-Mot cai can reset token.
+## 7. Ánh xạ sang code thật trong dự án
 
-### Loi 2: Dung chung token xac thuc email cho reset password
+Các file quan trọng:
 
-Khong nen.  
-Moi token phuc vu mot muc dich khac nhau.
+- Controller:
+  `src/main/java/com/backend/old_bicycle_project/controller/AuthController.java`
+- Service chính:
+  `src/main/java/com/backend/old_bicycle_project/service/AuthService.java`
+- Service gửi mail và quản lý reset token:
+  `src/main/java/com/backend/old_bicycle_project/service/EmailService.java`
+- Entity reset token:
+  `src/main/java/com/backend/old_bicycle_project/entity/PasswordResetToken.java`
+- Repository reset token:
+  `src/main/java/com/backend/old_bicycle_project/repository/PasswordResetTokenRepository.java`
+- Refresh token service:
+  `src/main/java/com/backend/old_bicycle_project/service/RefreshTokenService.java`
+- Refresh token repository:
+  `src/main/java/com/backend/old_bicycle_project/repository/RefreshTokenRepository.java`
+- Migration:
+  `src/main/resources/db/migration/V6__password_reset_tokens.sql`
 
-### Loi 3: Sau khi doi mat khau ma van de refresh token cu song
+## 8. Lỗi người mới học hay gặp
 
-Day la lo hong bao mat.
+### Lỗi 1: Nghĩ `change password` và `reset password` là một
 
-Neu password da doi ma session cu van song, thi tai khoan van co nguy co bi dung tiep.
+Không đúng.
 
-### Loi 4: Password policy chi check o register
+- `change password` cần biết mật khẩu hiện tại
+- `reset password` cần token tạm thời
 
-Sai.  
-Neu reset password khong check cung policy, user van co the quay lai dung mat khau yeu.
+### Lỗi 2: Dùng chung một loại token cho nhiều mục đích
 
-### Loi 5: Endpoint forgot-password de lo email nao ton tai
+Không nên dùng chung:
 
-Neu backend tra ve thong bao khac nhau cho email co/khong ton tai, thi nguoi xau co the do danh sach tai khoan.
+- token xác thực email
+- refresh token
+- reset token
 
-## 12. Kien thuc nay vua duoc ap dung vao file nao?
+Mỗi loại token có nhiệm vụ khác nhau.
 
-Neu muon doi chieu ly thuyet voi code, xem:
+### Lỗi 3: Chỉ đổi mật khẩu nhưng không thu hồi các phiên cũ
 
-- `src/main/java/com/backend/old_bicycle_project/controller/AuthController.java`
-- `src/main/java/com/backend/old_bicycle_project/service/AuthService.java`
-- `src/main/java/com/backend/old_bicycle_project/service/EmailService.java`
-- `src/main/java/com/backend/old_bicycle_project/entity/PasswordResetToken.java`
-- `src/main/java/com/backend/old_bicycle_project/repository/PasswordResetTokenRepository.java`
-- `src/main/resources/db/migration/V6__password_reset_tokens.sql`
+Đây là một lỗ hổng bảo mật phổ biến.
 
-## 13. Chot lai cho de nho
+### Lỗi 4: Chỉ kiểm tra password policy ở lúc register
 
-Neu giai thich ngan gon cho sinh vien nam nhat:
+Sai.
 
-- `forgot password` la xin mot quyen duoc dat lai mat khau
-- `reset token` la bang chung tam thoi cho quyen do
-- `reset password` la thuc su doi mat khau bang token
-- `change password` la doi mat khau khi van biet mat khau cu
-- `profile management` la cap nhat thong tin ca nhan
+Nếu `reset password` hoặc `change password` không kiểm tra cùng policy, hệ thống sẽ bị lệch chuẩn.
 
-Va cau quan trong nhat cua phase nay la:
+## 9. Câu chốt dễ nhớ
 
-**Account management dung nghia khong chi la dang nhap duoc, ma la phai tu phuc hoi va cap nhat tai khoan duoc mot cach an toan.**
+`Forgot password` là xin quyền đặt lại mật khẩu.  
+`Reset token` là bằng chứng tạm thời cho quyền đó.  
+`Reset password` là dùng bằng chứng đó để đổi mật khẩu.  
+`Change password` là đổi mật khẩu khi vẫn còn biết mật khẩu cũ.  
+`Profile management` là cập nhật thông tin cá nhân của tài khoản.
+
+Một hệ thống account management tốt không chỉ giúp người dùng đăng nhập được, mà còn giúp họ **khôi phục** và **bảo vệ** tài khoản một cách an toàn.
