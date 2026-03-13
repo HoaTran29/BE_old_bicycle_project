@@ -1,13 +1,13 @@
 # Backend Assessment - Current State
 
-Date: 2026-03-12  
+Date: 2026-03-13  
 Scope: `BE_old_bicycle_project/old_bicycle_project` backend compared against `../SRS-Old-Bicycles-Marketplace (1).md`
 
 ## Executive Summary
 
 The old backend assessment is no longer a reliable baseline. The current repository is broader than the old report suggested, and this pass moves the transaction layer from "order skeleton" into a usable first phase with acceptance, payment request, webhook confirmation, refund request, and admin review. The system is still behind the SRS in several must-have areas, but the backend is no longer missing a real payment path.
 
-**Fixed backend progress assessment: 61%**
+### **Fixed backend progress assessment: 65%**
 
 This number reflects SRS-aligned backend readiness, not just file count or module breadth.
 
@@ -26,8 +26,8 @@ This number reflects SRS-aligned backend readiness, not just file count or modul
 
 ## Repository Snapshot
 
-- 12 controllers
-- 18 entities
+- 14 controllers
+- 20 entities
 - Spring Boot 3.4.3
 - Java 21
 - PostgreSQL + Flyway
@@ -47,7 +47,7 @@ Weighted feature score:
 - `Partial` = 0.5
 - `Missing` = 0.0
 
-Raw feature score from the SRS matrix below: **62%**
+Raw feature score from the SRS matrix below: **66%**
 
 Readiness adjustment: **-1 point**
 
@@ -56,13 +56,13 @@ Reason for adjustment:
 - A first payment/refund flow now exists, targeted unit tests were added for order creation, payment request, webhook confirmation, and refund review, and WebSocket chat sender identity is now derived from authenticated STOMP sessions.
 - The system still lacks end-to-end integration tests, real gateway connectivity in non-mock mode, and deeper regression coverage.
 
-Final assessed backend progress: **61%**
+Final assessed backend progress: **65%**
 
 ## SRS Matrix
 
 | SRS ID | Module | Priority | Status | Current BE | What blocks `Done` |
 | --- | --- | --- | --- | --- | --- |
-| `F-001` | User Authentication | Must | `Partial` | Register, login, refresh, logout, email verification, and `/me` already exist. JWT and refresh-token flow are present. | Password reset and profile management are missing. Password policy is weaker than the SRS. |
+| `F-001` | User Authentication | Must | `Done` | Register, login, refresh, logout, email verification, forgot/reset password, `/me`, profile update, and change-password flows now exist. JWT and refresh-token flow are present, and password policy now enforces min 8 chars + uppercase + number. | Base must-have authentication scope is covered. |
 | `F-002` | Bike Listing | Must | `Partial` | Product create, update, delete, search, and detail endpoints exist. Multipart image upload is already wired. | Soft delete, moderation flow, seller-only ownership paths, and `BR01-BR04` are not fully enforced. |
 | `F-003` | Search & Filter | Must | `Done` | Public search endpoint with pagination and core filter fields is already usable. | Basic search/filter is covered. Remaining gaps belong to `F-004`, not this base feature. |
 | `F-004` | Advanced Filter | Must | `Partial` | Technical filters exist for brand, category, brake, frame material, condition, price, and province. | Groupset, verified/video, frame-size, wheel-size, and full inspection-aware filtering are incomplete. |
@@ -83,10 +83,10 @@ Final assessed backend progress: **61%**
 
 | Layer | Status | Assessment |
 | --- | --- | --- |
-| Database schema and migrations | `Partial` | Runtime enum naming now matches lowercase PostgreSQL enum values, `V4` reduced previous schema drift, and `V5` adds order/payment/refund fields for the new transaction flow. Confidence still depends on applying the migrations in real environments. |
+| Database schema and migrations | `Partial` | Runtime enum naming now matches lowercase PostgreSQL enum values, `V4` reduced previous schema drift, `V5` adds order/payment/refund fields, and `V6` adds password reset token storage. Confidence still depends on applying the migrations in real environments. |
 | Authorization and ownership | `Partial` | Notification, inspection, review, report, REST chat, and STOMP chat flows now derive identity from authenticated context instead of caller-supplied IDs. A few deeper business edges still need hardening. |
 | Business-rule enforcement | `Partial` | Transaction rules are stronger now: cash/manual and transfer/online paths are separated, held funds can no longer be cancelled directly, and refund flow is explicit. `BR01-BR07`, `BR11`, and deeper admin/order rules are still not fully enforced. |
-| Automated testing | `Partial` | The suite now includes focused service tests for `OrderServiceImpl`, `PaymentServiceImpl`, and `RefundServiceImpl`, plus `WebSocketAuthChannelInterceptorTest`, in addition to the context-load test. Integration coverage is still thin. |
+| Automated testing | `Partial` | The suite now includes focused service tests for `OrderServiceImpl`, `PaymentServiceImpl`, `RefundServiceImpl`, and `AuthService`, plus `WebSocketAuthChannelInterceptorTest`, in addition to the context-load test. Integration coverage is still thin. |
 | API and DX foundations | `Partial` | Swagger, API wrapper, and exception handling exist, but the API surface is still inconsistent in a few newer modules. |
 
 ## Main Findings
@@ -95,21 +95,20 @@ Final assessed backend progress: **61%**
 2. The old report also understated the amount of unfinished work that still blocks SRS-ready delivery.
 3. The transaction layer has improved materially: `Order`, `Payment`, and `Refund` now form a usable phase-1 business flow instead of isolated entities.
 4. The schema drift problem has been reduced again, but it is not fully retired until `V4` and `V5` are applied in actual environments.
-5. The largest remaining quality gaps are missing integration tests, incomplete SRS business rules in product/inspection flows, and unfinished account-management features.
+5. The largest remaining quality gaps are missing integration tests, incomplete SRS business rules in product/inspection flows, and the still-thin production depth of payment/admin flows.
 
 ## Recommended Next Milestones
 
-### Milestone 1 - Reach 66%
+### Milestone 1 - Reach 70%
 
-- Apply `V5__payment_refund_upgrade.sql` in dev/staging and wire the flow to real non-mock SePay configuration.
-- Add regression tests for wishlist, notifications, and real-time chat delivery/unread-state behavior.
-- Start password reset and profile-management delivery so `F-001` can move closer to `Done`.
+- Apply `V5__payment_refund_upgrade.sql` and `V6__password_reset_tokens.sql` in dev/staging, then wire the payment flow to real non-mock SePay configuration.
+- Add regression tests for wishlist, notifications, auth endpoints, and real-time chat delivery/unread-state behavior.
+- Close `BR01-BR07` gaps in product and inspection modules.
 
-### Milestone 2 - Reach 72%
+### Milestone 2 - Reach 74%
 
-- Close `BR01-BR07` enforcement gaps in product and inspection flows.
-- Complete password reset and profile management.
 - Add remaining-payment and payout-release rules if the product direction still wants staged payments.
+- Expand admin moderation, report handling, and dispute workflows.
 
 ### Milestone 3 - Reach 78%+
 

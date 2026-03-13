@@ -9,18 +9,17 @@ import lombok.Data;
 @Data
 public class RegisterRequest {
 
-    @NotBlank(message = "Email không được để trống")
-    @Email(message = "Email không hợp lệ")
+    @NotBlank(message = "Email khong duoc de trong")
+    @Email(message = "Email khong hop le")
     private String email;
 
-    @NotBlank(message = "Mật khẩu không được để trống")
-    @Size(min = 6, message = "Mật khẩu phải có ít nhất 6 ký tự")
+    @NotBlank(message = "Mat khau khong duoc de trong")
+    @Size(min = 8, message = "INVALID_PASSWORD")
     private String password;
 
     private String firstName;
     private String lastName;
     private String phone;
 
-    // Chỉ cho phép buyer hoặc seller tự đăng ký
     private AppRole role = AppRole.buyer;
 }

@@ -1,13 +1,20 @@
 package com.backend.old_bicycle_project.controller;
 
-import com.backend.old_bicycle_project.dto.auth.*;
+import com.backend.old_bicycle_project.dto.auth.AuthResponse;
+import com.backend.old_bicycle_project.dto.auth.ChangePasswordRequest;
+import com.backend.old_bicycle_project.dto.auth.ForgotPasswordRequest;
+import com.backend.old_bicycle_project.dto.auth.LoginRequest;
+import com.backend.old_bicycle_project.dto.auth.ProfileUpdateRequest;
+import com.backend.old_bicycle_project.dto.auth.RefreshTokenRequest;
+import com.backend.old_bicycle_project.dto.auth.RegisterRequest;
+import com.backend.old_bicycle_project.dto.auth.ResetPasswordRequest;
+import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import com.backend.old_bicycle_project.dto.response.ApiResponse;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -16,22 +23,13 @@ public class AuthController {
 
     private final AuthService authService;
 
-    /**
-     * POST /api/auth/register
-     * Đăng ký tài khoản mới (buyer hoặc seller)
-     */
     @PostMapping("/register")
     public ApiResponse<String> register(@Valid @RequestBody RegisterRequest request) {
-        String message = authService.register(request);
         return ApiResponse.<String>builder()
-                .result(message)
+                .result(authService.register(request))
                 .build();
     }
 
-    /**
-     * POST /api/auth/login
-     * Đăng nhập → trả về access token & refresh token
-     */
     @PostMapping("/login")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.<AuthResponse>builder()
@@ -39,10 +37,6 @@ public class AuthController {
                 .build();
     }
 
-    /**
-     * POST /api/auth/refresh
-     * Lấy access token mới từ refresh token
-     */
     @PostMapping("/refresh")
     public ApiResponse<AuthResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
         return ApiResponse.<AuthResponse>builder()
@@ -50,40 +44,59 @@ public class AuthController {
                 .build();
     }
 
-    /**
-     * POST /api/auth/logout
-     * Đăng xuất - xóa refresh token trong DB
-     * Yêu cầu: Authorization: Bearer <access_token>
-     */
+    @PostMapping("/forgot-password")
+    public ApiResponse<String> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        return ApiResponse.<String>builder()
+                .result(authService.requestPasswordReset(request))
+                .build();
+    }
+
+    @PostMapping("/reset-password")
+    public ApiResponse<String> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        return ApiResponse.<String>builder()
+                .result(authService.resetPassword(request))
+                .build();
+    }
+
     @PostMapping("/logout")
     public ApiResponse<String> logout(@AuthenticationPrincipal User currentUser) {
         authService.logout(currentUser);
         return ApiResponse.<String>builder()
-                .result("Đăng xuất thành công")
+                .result("Dang xuat thanh cong")
                 .build();
     }
 
-    /**
-     * GET /api/auth/verify-email?token=xxx
-     * Xác thực email từ link gửi trong mail
-     */
     @GetMapping("/verify-email")
     public ApiResponse<String> verifyEmail(@RequestParam String token) {
-        String message = authService.verifyEmail(token);
         return ApiResponse.<String>builder()
-                .result(message)
+                .result(authService.verifyEmail(token))
                 .build();
     }
 
-    /**
-     * GET /api/auth/me
-     * Lấy thông tin user hiện tại
-     * Yêu cầu: Authorization: Bearer <access_token>
-     */
     @GetMapping("/me")
     public ApiResponse<AuthResponse.UserInfo> getCurrentUser(@AuthenticationPrincipal User currentUser) {
         return ApiResponse.<AuthResponse.UserInfo>builder()
                 .result(authService.getCurrentUser(currentUser))
+                .build();
+    }
+
+    @PatchMapping("/profile")
+    public ApiResponse<AuthResponse.UserInfo> updateProfile(
+            @AuthenticationPrincipal User currentUser,
+            @RequestBody ProfileUpdateRequest request
+    ) {
+        return ApiResponse.<AuthResponse.UserInfo>builder()
+                .result(authService.updateProfile(currentUser, request))
+                .build();
+    }
+
+    @PatchMapping("/change-password")
+    public ApiResponse<String> changePassword(
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        return ApiResponse.<String>builder()
+                .result(authService.changePassword(currentUser, request))
                 .build();
     }
 }

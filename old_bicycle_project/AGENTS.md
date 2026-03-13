@@ -21,6 +21,22 @@ This repository is a **Java 21 / Spring Boot / PostgreSQL backend** for the Old 
 3. Read only the skills listed in that agent's `skills:` frontmatter.
 4. Apply those rules to the task.
 5. When using any agent, skill, or workflow, explicitly tell the user which ones are being used and why before doing substantial work. After task is done, announce to the user which ones are being used again.
+
+## Development Lifecycle
+
+- For new features, requirement writing, design refinement, implementation, verification, or knowledge capture, automatically follow the local `.agents` development lifecycle instead of improvising an ad-hoc flow.
+- The canonical lifecycle skill for this repository is `.agents/skills/dev-lifecycle/`. Use it by default whenever the task matches end-to-end feature delivery or a named lifecycle phase.
+- Prefer the closest matching workflow chain from `.agents/workflows/` and `dev-lifecycle` references. The default sequence is:
+  1. `new-requirement` or `review-requirements`
+  2. `review-design` when design decisions matter
+  3. `plan` or `update-planning`
+  4. `execute-plan`, `create`, or `enhance`
+  5. `check-implementation`
+  6. `writing-test`
+  7. `capture-knowledge`
+- If the task starts in the middle of the lifecycle, resume from the nearest correct step instead of restarting from the beginning.
+- If `dev-lifecycle` is unavailable or broken, say that briefly and use the equivalent local `.agents/workflows/` chain as the fallback.
+- If an external lifecycle skill is installed later, use it only when it does not conflict with the project-local `.agents` rules.
 ## Default Routing
 
 - Progress reports, SRS checks, gap analysis: `requirements-analyst`
@@ -39,6 +55,10 @@ This repository is a **Java 21 / Spring Boot / PostgreSQL backend** for the Old 
 - Treat a backend feature as `Done` only when API flow, service logic, security, migrations, major SRS rules, and basic verification are aligned.
 - If code and SRS disagree, state the mismatch explicitly instead of smoothing it over.
 - Do not infer completion from entities or repositories alone.
+- All Vietnamese prose written from this point onward must use proper Vietnamese diacritics by default.
+- This diacritic rule applies to code comments, JavaDoc, user-facing strings, documentation, planning notes, knowledge notes, and any other Vietnamese explanatory text.
+- Do not strip Vietnamese diacritics for convenience. Only keep text ASCII when there is a real technical constraint such as identifiers, slugs, protocol fields, environment variables, file names that must remain ASCII, or compatibility-sensitive tooling.
+- Normal code identifiers should remain ASCII unless there is a strong project-specific reason to do otherwise.
 
 ## Working Standard
 
@@ -58,7 +78,7 @@ If one link in that chain is missing, the feature is at best `Partial`.
 ## Knowledge Capture
 
 - After any large task involving code creation, code edits, refactoring, architecture changes, debugging, or any work that introduces useful new programming knowledge, write or update a beginner-friendly knowledge note in `docs/knowledge/`.
-- Write knowledge notes in Vietnamese by default, with wording suitable for a first-year university student who is new to programming.
+- Write knowledge notes in Vietnamese with proper diacritics by default, with wording suitable for a first-year university student who is new to programming.
 - Assume the reader may only know basic ideas such as variables, functions, classes, and HTTP at a very early level.
 - Explain both the underlying concept and how that concept was applied in the task that was just completed.
 - Define important terms clearly before using them in longer explanations. Do not rely on jargon without explanation.
