@@ -18,4 +18,8 @@ public interface OrderService {
     OrderResponseDTO completeOrder(UUID orderId, User currentUser);
 
     OrderResponseDTO cancelOrder(UUID orderId, User currentUser);
+
+    OrderResponseDTO acceptOrder(UUID orderId, User currentUser);
+
+    OrderResponseDTO shipOrder(UUID orderId, User currentUser);
 }

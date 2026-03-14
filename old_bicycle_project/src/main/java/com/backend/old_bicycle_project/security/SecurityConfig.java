@@ -52,7 +52,9 @@ public class SecurityConfig {
                         // Swagger UI
                         "/swagger-ui/**",
                         "/swagger-ui.html",
-                        "/v3/api-docs/**",
+                        // VNPay Return/IPN (Public để hệ thống VNPay gọi vào)
+                        "/api/payment/vnpay-return",
+                        "/api/payment/vnpay-ipn",
                         // OAuth2
                         "/oauth2/**",
                         "/login/oauth2/**"

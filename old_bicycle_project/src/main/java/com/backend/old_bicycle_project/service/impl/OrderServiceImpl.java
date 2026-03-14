@@ -100,13 +100,43 @@ public class OrderServiceImpl implements OrderService {
         Order order = getOrder(orderId);
         validateSellerOrAdmin(order, currentUser);
 
-        if (order.getStatus() != OrderStatus.deposited) {
+        if (order.getStatus() != OrderStatus.shipped) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
         order.setStatus(OrderStatus.completed);
         order.getProduct().setStatus(ProductStatus.sold);
         productRepository.save(order.getProduct());
+        return mapToDTO(orderRepository.save(order));
+    }
+
+    @Override
+    @Transactional
+    public OrderResponseDTO acceptOrder(UUID orderId, User currentUser) {
+        Order order = getOrder(orderId);
+        validateSellerOrAdmin(order, currentUser);
+
+        // Buyer must deposit first before seller can accept
+        if (order.getStatus() != OrderStatus.deposited) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+
+        order.setStatus(OrderStatus.accepted);
+        return mapToDTO(orderRepository.save(order));
+    }
+
+    @Override
+    @Transactional
+    public OrderResponseDTO shipOrder(UUID orderId, User currentUser) {
+        Order order = getOrder(orderId);
+        validateSellerOrAdmin(order, currentUser);
+
+        // Seller must accept before shipping
+        if (order.getStatus() != OrderStatus.accepted) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+
+        order.setStatus(OrderStatus.shipped);
         return mapToDTO(orderRepository.save(order));
     }
 

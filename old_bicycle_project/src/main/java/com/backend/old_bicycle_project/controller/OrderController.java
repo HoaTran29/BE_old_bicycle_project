@@ -68,6 +68,28 @@ public class OrderController {
                 .build();
     }
 
+    @PatchMapping("/{orderId}/accept")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    public ApiResponse<OrderResponseDTO> acceptOrder(
+            @PathVariable UUID orderId,
+            @AuthenticationPrincipal User currentUser) {
+        return ApiResponse.<OrderResponseDTO>builder()
+                .message("Order accepted successfully")
+                .result(orderService.acceptOrder(orderId, currentUser))
+                .build();
+    }
+
+    @PatchMapping("/{orderId}/ship")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    public ApiResponse<OrderResponseDTO> shipOrder(
+            @PathVariable UUID orderId,
+            @AuthenticationPrincipal User currentUser) {
+        return ApiResponse.<OrderResponseDTO>builder()
+                .message("Order shipped successfully")
+                .result(orderService.shipOrder(orderId, currentUser))
+                .build();
+    }
+
     @PatchMapping("/{orderId}/cancel")
     @PreAuthorize("hasAnyRole('BUYER', 'SELLER', 'ADMIN')")
     public ApiResponse<OrderResponseDTO> cancelOrder(
