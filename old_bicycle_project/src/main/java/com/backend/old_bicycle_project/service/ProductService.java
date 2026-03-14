@@ -158,9 +158,10 @@ public class ProductService {
 
         if (newImages != null && !newImages.isEmpty()) {
             validateMinimumImages(newImages);
-            product.getImages().forEach(img -> storageService.deleteFile(img.getUrl()));
-            productImageRepository.deleteAllByProductId(id);
-            product.setImages(uploadImages(product, newImages));
+            removeStoredImages(product);
+            List<ProductImage> uploadedImages = uploadImages(product, newImages);
+            product.getImages().clear();
+            product.getImages().addAll(uploadedImages);
         }
 
         product.setStatus(ProductStatus.pending);
@@ -178,6 +179,7 @@ public class ProductService {
             throw new AppException(ErrorCode.FORBIDDEN);
         }
 
+        removeStoredImages(product);
         product.setDeletedAt(LocalDateTime.now());
         product.setStatus(ProductStatus.hidden);
         invalidateInspection(product);
@@ -322,6 +324,16 @@ public class ProductService {
         }
         productImageRepository.saveAll(productImages);
         return productImages;
+    }
+
+    private void removeStoredImages(Product product) {
+        if (product.getImages() == null || product.getImages().isEmpty()) {
+            return;
+        }
+
+        product.getImages().forEach(img -> storageService.deleteFile(img.getUrl()));
+        productImageRepository.deleteAllByProductId(product.getId());
+        product.getImages().clear();
     }
 
     private void invalidateInspection(Product product) {

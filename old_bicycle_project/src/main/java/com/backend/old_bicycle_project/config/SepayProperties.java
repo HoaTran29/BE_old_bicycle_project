@@ -11,8 +11,10 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "payment.sepay")
 public class SepayProperties {
     private boolean mockMode = true;
+    private String apiBaseUrl = "https://my.sepay.vn/userapi";
     private String apiToken;
     private String webhookApiKey;
+    private String bankAccountId;
     private String bankBin;
     private String accountNumber;
     private String accountName;

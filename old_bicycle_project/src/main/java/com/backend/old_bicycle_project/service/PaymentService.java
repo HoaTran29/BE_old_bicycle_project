@@ -1,6 +1,5 @@
 package com.backend.old_bicycle_project.service;
 
-import com.backend.old_bicycle_project.dto.request.SepayWebhookRequestDTO;
 import com.backend.old_bicycle_project.dto.response.PaymentRequestResponseDTO;
 import com.backend.old_bicycle_project.dto.response.PaymentResponseDTO;
 import com.backend.old_bicycle_project.entity.User;
@@ -14,5 +13,5 @@ public interface PaymentService {
 
     List<PaymentResponseDTO> getOrderPayments(UUID orderId, User currentUser);
 
-    void handleSepayWebhook(SepayWebhookRequestDTO requestDTO, String authorizationHeader);
+    void handleSepayWebhook(String rawPayload, String authorizationHeader, String secretKeyHeader);
 }

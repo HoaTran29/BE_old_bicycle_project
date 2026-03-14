@@ -1,13 +1,13 @@
 # Backend Assessment - Current State
 
-Date: 2026-03-13  
+Date: 2026-03-14  
 Scope: `BE_old_bicycle_project/old_bicycle_project` backend compared against `../SRS-Old-Bicycles-Marketplace (1).md`
 
 ## Executive Summary
 
-The old backend assessment is no longer a reliable baseline. The current repository is broader than the old report suggested, and this pass moves the transaction layer from "order skeleton" into a usable first phase with acceptance, payment request, webhook confirmation, refund request, and admin review. The system is still behind the SRS in several must-have areas, but the backend is no longer missing a real payment path.
+The old backend assessment is no longer a reliable baseline. The current repository is broader than the old report suggested, and the backend has now been validated not only at service-test level but also against the real Supabase-backed runtime: schema sync, storage-backed product creation, storage cleanup on update/delete, and a product-to-order-to-payment mock smoke test all pass. The system is still behind the SRS in several must-have areas, but the backend is no longer missing a usable transaction path.
 
-### **Fixed backend progress assessment: 65%**
+### **Fixed backend progress assessment: 66%**
 
 This number reflects SRS-aligned backend readiness, not just file count or module breadth.
 
@@ -26,8 +26,8 @@ This number reflects SRS-aligned backend readiness, not just file count or modul
 
 - Several implemented modules are still only `Partial` because business rules, payment flow depth, or admin workflow depth are missing.
 - The new payment flow is intentionally phase-1 simple: it supports upfront payment and refund handling, but not full gateway checkout orchestration, split payout, or automated refund execution.
-- Schema drift is improved again, but delivery confidence still depends on applying the new Flyway changes in the real environments.
-- Test coverage is better than before, but it is still service-level and far from full regression protection.
+- Delivery confidence is better because `V1-V7` has now been reconciled on the real Supabase environment and startup/runtime smoke has passed, but that confidence still needs broader repeatability across environments.
+- Test coverage is better than before, but automated integration coverage is still far from full regression protection.
 
 ## Repository Snapshot
 
@@ -54,21 +54,21 @@ Weighted feature score:
 
 Raw feature score from the SRS matrix below: **66%**
 
-Readiness adjustment: **-1 point**
+Readiness adjustment: **0 points**
 
 Reason for adjustment:
 
-- A first payment/refund flow now exists, targeted service tests now cover order creation, payment request, webhook confirmation, refund review, wishlist behavior, notification ownership/read behavior, and WebSocket chat sender identity derived from authenticated STOMP sessions.
-- The system still lacks end-to-end integration tests, real gateway connectivity in non-mock mode, and deeper regression coverage.
+- A first payment/refund flow now exists, targeted service tests cover the main service layer, and the backend has now also passed real runtime smoke on Supabase for product creation with storage, product image replacement, storage cleanup on delete, order acceptance, payment request creation, and webhook confirmation.
+- The system still lacks automated end-to-end integration tests, real gateway connectivity in non-mock mode, and deeper regression coverage.
 
-Final assessed backend progress: **65%**
+Final assessed backend progress: **66%**
 
 ## SRS Matrix
 
 | SRS ID | Module | Priority | Status | Current BE | What blocks `Done` |
 | --- | --- | --- | --- | --- | --- |
 | `F-001` | User Authentication | Must | `Done` | Register, login, refresh, logout, email verification, forgot/reset password, `/me`, profile update, and change-password flows now exist. JWT and refresh-token flow are present, and password policy now enforces min 8 chars + uppercase + number. | Base must-have authentication scope is covered. |
-| `F-002` | Bike Listing | Must | `Partial` | Product create now enforces required technical fields and minimum image count, sets `expiresAt`, uses seller-scoped listing queries, and applies soft delete instead of hard delete. Multipart image upload is already wired. | Moderation flow and stricter transaction-aware edit restrictions remain incomplete. Video/media depth is intentionally deferred from MVP but still missing against the full SRS. |
+| `F-002` | Bike Listing | Must | `Partial` | Product create now enforces required technical fields and minimum image count, sets `expiresAt`, uses seller-scoped listing queries, applies soft delete, uploads real images to Supabase Storage, and now cleans old images on update/delete. | Moderation flow and stricter transaction-aware edit restrictions remain incomplete. Video/media depth is intentionally deferred from MVP but still missing against the full SRS. |
 | `F-003` | Search & Filter | Must | `Done` | Public search endpoint with pagination and core filter fields is already usable. | Basic search/filter is covered. Remaining gaps belong to `F-004`, not this base feature. |
 | `F-004` | Advanced Filter | Must | `Partial` | Technical filters now cover brand, category, brake, frame material, condition, price, province, frame size, wheel size, groupset, and verified status. | The MVP no longer plans `hasVideo` filtering, but that field is still absent compared against the full SRS. |
 | `F-005` | Bike Detail View | Must | `Partial` | Product detail now returns listing data with images, real verified badge state, and a public inspection summary/report block when inspection data exists. | Seller trust depth and some remaining SRS detail fields are still incomplete. Video playback/media expansion is deferred from MVP but not delivered in the full SRS sense. |
@@ -88,10 +88,10 @@ Final assessed backend progress: **65%**
 
 | Layer | Status | Assessment |
 | --- | --- | --- |
-| Database schema and migrations | `Partial` | Runtime enum naming now matches lowercase PostgreSQL enum values, `V4` reduced previous schema drift, `V5` adds order/payment/refund fields, and `V6` adds password reset token storage. Confidence still depends on applying the migrations in real environments. |
+| Database schema and migrations | `Partial` | Runtime enum naming now matches lowercase PostgreSQL enum values, `V1-V7` has been reconciled on the active Supabase environment, and backend startup now validates against the real schema. Remaining risk is future environment drift, not the current primary environment. |
 | Authorization and ownership | `Partial` | Notification, inspection, review, report, REST chat, and STOMP chat flows now derive identity from authenticated context instead of caller-supplied IDs. A few deeper business edges still need hardening. |
 | Business-rule enforcement | `Partial` | Transaction rules remain stronger, and `BR01-BR07` is materially improved: required technical fields, minimum images, listing expiry, soft delete, verified derivation, and inspection invalidation now exist in backend logic. Remaining MVP gaps are richer moderation/admin flow and deeper order/admin rules. Video support is now a deliberate post-MVP item, though still a gap versus the full SRS. |
-| Automated testing | `Partial` | The suite now includes focused service tests for `OrderServiceImpl`, `PaymentServiceImpl`, `RefundServiceImpl`, `AuthService`, `WishlistServiceImpl`, and `NotificationServiceImpl`, plus `WebSocketAuthChannelInterceptorTest`, in addition to the context-load test. Integration coverage is still thin. |
+| Automated testing | `Partial` | The suite now includes focused service tests for `OrderServiceImpl`, `PaymentServiceImpl`, `RefundServiceImpl`, `AuthService`, `WishlistServiceImpl`, and `NotificationServiceImpl`, plus `WebSocketAuthChannelInterceptorTest`, in addition to the context-load test. Real smoke testing has improved confidence further, but automated integration coverage is still thin. |
 | API and DX foundations | `Partial` | Swagger, API wrapper, and exception handling exist, but the API surface is still inconsistent in a few newer modules. |
 
 ## Main Findings
@@ -99,15 +99,16 @@ Final assessed backend progress: **65%**
 1. The old report understated the repository breadth. The backend is not a tiny skeleton anymore.
 2. The old report also understated the amount of unfinished work that still blocks SRS-ready delivery.
 3. The transaction layer has improved materially: `Order`, `Payment`, and `Refund` now form a usable phase-1 business flow instead of isolated entities.
-4. The schema drift problem has been reduced again, but it is not fully retired until `V4` and `V5` are applied in actual environments.
-5. The largest remaining MVP quality gaps are missing integration tests, incomplete moderation/admin depth, and the still-thin production depth of payment flows.
-6. Video/media support remains a full-SRS gap, but it is no longer a near-term MVP milestone.
+4. The schema drift problem is materially better: the active Supabase environment is now reconciled through `V7`, and runtime startup has been verified against it.
+5. Storage-backed product flows are stronger now that create, update-image replacement, and delete cleanup have all been smoke-tested against Supabase Storage.
+6. The largest remaining MVP quality gaps are missing automated integration tests, incomplete moderation/admin depth, and the still-thin production depth of payment flows.
+7. Video/media support remains a full-SRS gap, but it is no longer a near-term MVP milestone.
 
 ## Recommended Next Milestones
 
 ### Milestone 1 - Reach 70%
 
-- Apply `V5__payment_refund_upgrade.sql` and `V6__password_reset_tokens.sql` in dev/staging, then wire the payment flow to real non-mock SePay configuration.
+- Wire the payment flow to real non-mock SePay configuration and verify a first live-like transaction path.
 - Add regression tests for wishlist, notifications, auth endpoints, and real-time chat delivery/unread-state behavior.
 - Finish the remaining Product/Inspection gaps that still belong to MVP: repository/integration coverage for search filtering and any admin moderation rules still tied to listing state transitions.
 

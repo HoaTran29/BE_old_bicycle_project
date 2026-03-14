@@ -7,6 +7,7 @@ import com.backend.old_bicycle_project.entity.BrakeType;
 import com.backend.old_bicycle_project.entity.FrameMaterial;
 import com.backend.old_bicycle_project.entity.Inspection;
 import com.backend.old_bicycle_project.entity.Product;
+import com.backend.old_bicycle_project.entity.ProductImage;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
@@ -40,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -114,9 +116,11 @@ class ProductServiceTest {
         when(productImageRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
         when(inspectionRepository.findByProductId(any(UUID.class))).thenReturn(Optional.empty());
 
-        ProductResponse response = productService.create(request,
+        ProductResponse response = productService.create(
+                request,
                 List.of(image("bike-1.jpg"), image("bike-2.jpg"), image("bike-3.jpg")),
-                seller);
+                seller
+        );
 
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
         assertThat(response.getExpiresAt()).isEqualTo(LocalDateTime.of(2026, 4, 12, 10, 0));
@@ -143,6 +147,20 @@ class ProductServiceTest {
     void deleteSoftDeletesProductInsteadOfHardDeleting() {
         User seller = seller();
         Product product = product(seller, ProductStatus.active);
+        product.getImages().add(ProductImage.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .url("https://cdn.test/bike-1.jpg")
+                .displayOrder(0)
+                .isPrimary(true)
+                .build());
+        product.getImages().add(ProductImage.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .url("https://cdn.test/bike-2.jpg")
+                .displayOrder(1)
+                .isPrimary(false)
+                .build());
 
         when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
         when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
@@ -156,6 +174,10 @@ class ProductServiceTest {
 
         assertThat(savedProduct.getDeletedAt()).isNotNull();
         assertThat(savedProduct.getStatus()).isEqualTo(ProductStatus.hidden);
+        assertThat(savedProduct.getImages()).isEmpty();
+        verify(storageService).deleteFile("https://cdn.test/bike-1.jpg");
+        verify(storageService).deleteFile("https://cdn.test/bike-2.jpg");
+        verify(productImageRepository).deleteAllByProductId(product.getId());
         verify(productRepository, never()).delete(any(Product.class));
     }
 
@@ -207,6 +229,61 @@ class ProductServiceTest {
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
         assertThat(inspection.getPassed()).isFalse();
         assertThat(inspection.getValidUntil()).isNotNull();
+    }
+
+    @Test
+    void updateReplacesImageCollectionWithoutBreakingManagedCollectionReference() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+        product.getImages().add(ProductImage.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .url("https://cdn.test/old-bike-1.jpg")
+                .displayOrder(0)
+                .isPrimary(true)
+                .build());
+        product.getImages().add(ProductImage.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .url("https://cdn.test/old-bike-2.jpg")
+                .displayOrder(1)
+                .isPrimary(false)
+                .build());
+        product.getImages().add(ProductImage.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .url("https://cdn.test/old-bike-3.jpg")
+                .displayOrder(2)
+                .isPrimary(false)
+                .build());
+
+        ProductUpdateRequest request = new ProductUpdateRequest();
+        request.setTitle("Xe đã cập nhật ảnh");
+        request.setFrameSize("L");
+        request.setWheelSize("29");
+
+        List<MockMultipartFile> newImages = List.of(
+                image("new-bike-1.jpg"),
+                image("new-bike-2.jpg"),
+                image("new-bike-3.jpg")
+        );
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(productImageRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(storageService.uploadFile(any(), anyString()))
+                .thenReturn("https://cdn.test/new-bike-1.jpg", "https://cdn.test/new-bike-2.jpg", "https://cdn.test/new-bike-3.jpg");
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.update(product.getId(), request, List.copyOf(newImages), seller);
+
+        assertThat(response.getImages()).hasSize(3);
+        assertThat(response.getImages().getFirst().getUrl()).isEqualTo("https://cdn.test/new-bike-1.jpg");
+        assertThat(product.getImages()).hasSize(3);
+        verify(storageService).deleteFile("https://cdn.test/old-bike-1.jpg");
+        verify(storageService).deleteFile("https://cdn.test/old-bike-2.jpg");
+        verify(storageService).deleteFile("https://cdn.test/old-bike-3.jpg");
+        verify(productImageRepository, atLeastOnce()).deleteAllByProductId(product.getId());
     }
 
     private ProductCreateRequest validCreateRequest() {
