@@ -12,6 +12,8 @@ import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentPhase;
 import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
+import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -45,11 +48,13 @@ class PaymentServiceImplTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    private SepayProperties properties;
+
     private PaymentServiceImpl paymentService;
 
     @BeforeEach
     void setUp() {
-        SepayProperties properties = new SepayProperties();
+        properties = new SepayProperties();
         properties.setMockMode(true);
         properties.setBankBin("970422");
         properties.setAccountNumber("123456789");
@@ -93,6 +98,20 @@ class PaymentServiceImplTest {
     }
 
     @Test
+    void createUpfrontPaymentRequestRejectsLiveModeWithoutWebhookKey() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        properties.setMockMode(false);
+        properties.setWebhookApiKey(null);
+
+        when(orderRepository.findByIdAndBuyerId(order.getId(), buyer.getId())).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> paymentService.createUpfrontPaymentRequest(order.getId(), buyer))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_NOT_READY));
+    }
+
+    @Test
     void handleSepayWebhookMarksPaymentSuccessfulAndOrderHeld() {
         User buyer = user(AppRole.buyer, "buyer@test.dev");
         Order order = acceptedOrder(buyer);
@@ -126,6 +145,20 @@ class PaymentServiceImplTest {
         assertThat(order.getRemainingAmount()).isEqualByComparingTo("8000000");
 
         verify(eventPublisher, times(2)).publishEvent(any());
+    }
+
+    @Test
+    void handleSepayWebhookRejectsLiveModeWithoutWebhookKey() {
+        properties.setMockMode(false);
+        properties.setWebhookApiKey(null);
+
+        assertThatThrownBy(() -> paymentService.handleSepayWebhook(SepayWebhookRequestDTO.builder()
+                        .code("OB-ORDER-001")
+                        .transferType("in")
+                        .transferAmount(new BigDecimal("2000000"))
+                        .build(), null))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_VALIDATION_FAILED));
     }
 
     private Order acceptedOrder(User buyer) {

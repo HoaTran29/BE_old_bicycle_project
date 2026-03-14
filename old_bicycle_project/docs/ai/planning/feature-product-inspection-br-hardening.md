@@ -23,7 +23,7 @@ description: Implementation plan for closing Product and Inspection rule gaps
 - [x] Derive verified badge from valid passed inspections
 - [x] Expose public inspection summary/report on product detail
 - [x] Expand filter support for frame size, wheel size, groupset, and verified
-- [ ] Video compatibility handling remains deferred because the backend still has no video storage/model
+- [x] Record that video/media remains deferred from MVP because the backend still has no video storage/model and the team is intentionally reducing scope
 
 ### Phase 3: Persistence & Verification
 - [x] Add Flyway migration for soft delete and any supporting indexes/columns
@@ -46,7 +46,8 @@ description: Implementation plan for closing Product and Inspection rule gaps
 
 - Code updated across controller, service, repository, DTO, specification, entity, migration, and tests.
 - `.\mvnw.cmd test` passed on Java 21 after the slice was completed.
-- Remaining gap in this feature area: actual video upload/storage and therefore true `hasVideo` filtering.
+- Remaining MVP gap in this feature area: repository/integration coverage for search filtering and tighter moderation-state handling.
+- Explicitly deferred from MVP: actual video upload/storage and therefore true `hasVideo` filtering.
 
 ## Risks & Mitigation
 

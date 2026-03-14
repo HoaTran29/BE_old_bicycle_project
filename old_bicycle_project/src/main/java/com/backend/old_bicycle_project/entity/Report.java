@@ -4,7 +4,9 @@ import com.backend.old_bicycle_project.entity.enums.ReportReason;
 import com.backend.old_bicycle_project.entity.enums.ReportStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcType;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -32,7 +34,8 @@ public class Report {
     private String targetType;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "reason")
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "reason", columnDefinition = "report_reason")
     private ReportReason reason;
 
     @Column(name = "description", columnDefinition = "TEXT")
@@ -40,7 +43,8 @@ public class Report {
 
     @Builder.Default
     @Enumerated(EnumType.STRING)
-    @Column(name = "status")
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "status", columnDefinition = "report_status")
     private ReportStatus status = ReportStatus.pending;
 
     @CreationTimestamp

@@ -22,6 +22,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -83,6 +85,7 @@ public class Product {
     private String groupset;
 
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     @Column(columnDefinition = "condition_type")
     @Builder.Default
     private ConditionType condition = ConditionType.used;
@@ -91,6 +94,7 @@ public class Product {
     private String district;
 
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     @Column(columnDefinition = "product_status")
     @Builder.Default
     private ProductStatus status = ProductStatus.pending;

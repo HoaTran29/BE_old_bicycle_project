@@ -71,6 +71,8 @@ public class PaymentServiceImpl implements PaymentService {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
+        validateSepayConfigurationForCurrentMode();
+
         Payment existingPayment = paymentRepository.findFirstByOrderIdAndPhaseOrderByCreatedAtDesc(orderId, PaymentPhase.upfront)
                 .orElse(null);
 
@@ -197,6 +199,9 @@ public class PaymentServiceImpl implements PaymentService {
 
     private void validateWebhookAuthorization(String authorizationHeader) {
         if (sepayProperties.getWebhookApiKey() == null || sepayProperties.getWebhookApiKey().isBlank()) {
+            if (!sepayProperties.isMockMode()) {
+                throw new AppException(ErrorCode.PAYMENT_VALIDATION_FAILED);
+            }
             return;
         }
 
@@ -205,6 +210,20 @@ public class PaymentServiceImpl implements PaymentService {
                 || normalizedHeader.equalsIgnoreCase("Apikey " + sepayProperties.getWebhookApiKey());
         if (!matches) {
             throw new AppException(ErrorCode.PAYMENT_VALIDATION_FAILED);
+        }
+    }
+
+    private void validateSepayConfigurationForCurrentMode() {
+        if (sepayProperties.isMockMode()) {
+            return;
+        }
+
+        boolean missingTransferConfig = isBlank(sepayProperties.getBankBin())
+                || isBlank(sepayProperties.getAccountNumber());
+        boolean missingWebhookKey = isBlank(sepayProperties.getWebhookApiKey());
+
+        if (missingTransferConfig || missingWebhookKey) {
+            throw new AppException(ErrorCode.PAYMENT_NOT_READY);
         }
     }
 
@@ -261,6 +280,10 @@ public class PaymentServiceImpl implements PaymentService {
 
     private BigDecimal maxZero(BigDecimal value) {
         return value.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : value;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private void publishOrderNotification(UUID userId, String title, String content, String metadata) {

@@ -46,7 +46,8 @@ description: Test strategy for Product and Inspection rule alignment
 - Ran `.\mvnw.cmd -Dtest=ProductServiceTest test` with Java 21
 - Ran full `.\mvnw.cmd test` with Java 21
 - Added `ProductServiceTest` with 6 focused service-level tests
-- Remaining gap: no repository/integration test yet for `ProductSpecification` and no runtime coverage for future video support
+- Remaining gap: no repository/integration test yet for `ProductSpecification`
+- Video support is intentionally deferred from MVP, so no runtime coverage is planned for that area in the near term
 
 ## Manual Testing
 

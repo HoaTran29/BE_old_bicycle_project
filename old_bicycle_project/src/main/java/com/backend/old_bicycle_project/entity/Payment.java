@@ -6,8 +6,11 @@ import com.backend.old_bicycle_project.entity.enums.PaymentPhase;
 import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnTransformer;
+import org.hibernate.annotations.JdbcType;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -38,7 +41,8 @@ public class Payment {
     private PaymentGateway gateway = PaymentGateway.manual;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "method", nullable = false)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "method", nullable = false, columnDefinition = "payment_method")
     private PaymentMethod method;
 
     @Builder.Default
@@ -48,7 +52,8 @@ public class Payment {
 
     @Builder.Default
     @Enumerated(EnumType.STRING)
-    @Column(name = "status")
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "status", columnDefinition = "payment_status")
     private PaymentStatus status = PaymentStatus.pending;
 
     @Column(name = "gateway_order_code", unique = true)
@@ -64,6 +69,7 @@ public class Payment {
     private String transactionReference;
 
     @Column(name = "gateway_response", columnDefinition = "jsonb")
+    @ColumnTransformer(read = "gateway_response::text", write = "?::jsonb")
     private String gatewayResponse;
 
     @Column(name = "payment_date")

@@ -77,7 +77,7 @@ graph TD
 - Use soft delete with `deletedAt` instead of hard delete to match SRS and preserve auditability.
 - Derive verified state from inspection validity rather than storing a duplicate boolean on `Product`.
 - Keep public inspection exposure read-only through product response mapping to avoid coupling product writes to inspection storage.
-- Defer true video storage support because the backend model does not yet support it cleanly.
+- Defer true video storage support out of MVP because the backend model does not yet support it cleanly and the team is prioritizing payment/test/admin depth first.
 
 ## Non-Functional Requirements
 

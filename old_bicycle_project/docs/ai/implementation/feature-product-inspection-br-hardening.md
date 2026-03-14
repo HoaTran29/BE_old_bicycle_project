@@ -56,5 +56,5 @@ description: Implementation notes for Product and Inspection rule alignment
 
 ## Deferred Items
 
-- True video upload/storage is still missing, so `hasVideo` filtering is intentionally not claimed as complete.
+- True video upload/storage is intentionally deferred out of MVP, so `hasVideo` filtering is not claimed as part of the current delivery plan.
 - Product/inspection status modeling is still somewhat overloaded because moderation state and inspection state share one enum. This slice makes that behavior safer, but it does not redesign the whole state machine.

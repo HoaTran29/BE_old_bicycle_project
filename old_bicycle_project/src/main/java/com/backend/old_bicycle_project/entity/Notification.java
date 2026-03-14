@@ -3,7 +3,10 @@ package com.backend.old_bicycle_project.entity;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnTransformer;
+import org.hibernate.annotations.JdbcType;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -31,7 +34,8 @@ public class Notification {
     private String content;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "type", nullable = false)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "type", nullable = false, columnDefinition = "notification_type")
     private NotificationType type;
 
     @Builder.Default
@@ -39,6 +43,7 @@ public class Notification {
     private Boolean isRead = false;
 
     @Column(name = "metadata", columnDefinition = "jsonb")
+    @ColumnTransformer(read = "metadata::text", write = "?::jsonb")
     private String metadata;
 
     @CreationTimestamp

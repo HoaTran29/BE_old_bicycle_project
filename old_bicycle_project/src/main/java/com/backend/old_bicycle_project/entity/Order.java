@@ -6,8 +6,10 @@ import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcType;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -63,7 +65,8 @@ public class Order {
 
     @Builder.Default
     @Enumerated(EnumType.STRING)
-    @Column(name = "status")
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "status", columnDefinition = "order_status")
     private OrderStatus status = OrderStatus.pending;
 
     @Builder.Default
@@ -72,7 +75,8 @@ public class Order {
     private OrderFundingStatus fundingStatus = OrderFundingStatus.unpaid;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "payment_method")
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "payment_method", columnDefinition = "payment_method")
     private PaymentMethod paymentMethod;
 
     @Column(name = "accepted_at")
