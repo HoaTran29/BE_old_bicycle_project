@@ -26,7 +26,8 @@ public enum ErrorCode {
     INVALID_RESET_TOKEN(1018, "Password reset token is invalid or expired", HttpStatus.BAD_REQUEST),
     CURRENT_PASSWORD_INVALID(1019, "Current password is incorrect", HttpStatus.BAD_REQUEST),
     PRODUCT_TECHNICAL_FIELDS_REQUIRED(1020, "Frame size and wheel size are required", HttpStatus.BAD_REQUEST),
-    PRODUCT_MINIMUM_IMAGES_REQUIRED(1021, "At least 3 product images are required", HttpStatus.BAD_REQUEST);
+    PRODUCT_MINIMUM_IMAGES_REQUIRED(1021, "At least 3 product images are required", HttpStatus.BAD_REQUEST),
+    PAYMENT_GATEWAY_ERROR(1022, "Payment gateway request failed", HttpStatus.BAD_GATEWAY);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

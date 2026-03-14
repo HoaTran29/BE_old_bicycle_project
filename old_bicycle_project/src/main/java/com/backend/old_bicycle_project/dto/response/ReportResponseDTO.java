@@ -23,5 +23,9 @@ public class ReportResponseDTO {
     private ReportReason reason;
     private String description;
     private ReportStatus status;
+    private String adminNote;
+    private UUID processedById;
+    private String processedByName;
     private LocalDateTime createdAt;
+    private LocalDateTime processedAt;
 }

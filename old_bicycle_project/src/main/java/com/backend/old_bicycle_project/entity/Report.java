@@ -27,6 +27,10 @@ public class Report {
     @JoinColumn(name = "reporter_id")
     private User reporter;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "processed_by")
+    private User processedBy;
+
     @Column(name = "target_id", nullable = false)
     private UUID targetId;
 
@@ -41,6 +45,9 @@ public class Report {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "admin_note", columnDefinition = "TEXT")
+    private String adminNote;
+
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @JdbcType(PostgreSQLEnumJdbcType.class)
@@ -50,4 +57,7 @@ public class Report {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "processed_at")
+    private LocalDateTime processedAt;
 }
