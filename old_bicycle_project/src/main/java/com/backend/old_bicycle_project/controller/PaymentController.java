@@ -45,9 +45,8 @@ public class PaymentController {
     @PostMapping("/sepay/webhook")
     public ResponseEntity<ApiResponse<Void>> handleSepayWebhook(
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @RequestHeader(value = "X-Secret-Key", required = false) String secretKeyHeader,
             @RequestBody String rawPayload) {
-        paymentService.handleSepayWebhook(rawPayload, authorizationHeader, secretKeyHeader);
+        paymentService.handleSepayWebhook(rawPayload, authorizationHeader);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .message("Webhook processed successfully")
                 .build());

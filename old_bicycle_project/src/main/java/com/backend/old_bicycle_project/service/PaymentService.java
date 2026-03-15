@@ -13,5 +13,5 @@ public interface PaymentService {
 
     List<PaymentResponseDTO> getOrderPayments(UUID orderId, User currentUser);
 
-    void handleSepayWebhook(String rawPayload, String authorizationHeader, String secretKeyHeader);
+    void handleSepayWebhook(String rawPayload, String authorizationHeader);
 }

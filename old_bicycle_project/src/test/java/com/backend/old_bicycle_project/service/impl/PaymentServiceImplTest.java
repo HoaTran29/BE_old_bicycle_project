@@ -266,10 +266,12 @@ class PaymentServiceImplTest {
     }
 
     @Test
-    void handleLegacySepayWebhookMarksPaymentSuccessfulAndOrderHeld() {
+    void handleSepayWebhookMarksPaymentSuccessfulAndOrderHeld() {
         User buyer = user(AppRole.buyer, "buyer@test.dev");
         Order order = acceptedOrder(buyer);
         Payment payment = processingPayment(order, "OB-ORDER-001");
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("webhook-secret");
 
         when(paymentRepository.findByGatewayOrderCode("OB-ORDER-001")).thenReturn(Optional.of(payment));
         when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -283,7 +285,7 @@ class PaymentServiceImplTest {
                   "referenceCode": "TX-001",
                   "transactionDate": "2026-03-12 11:00:00"
                 }
-                """, null, null);
+                """, "Apikey webhook-secret");
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.success);
         assertThat(payment.getTransactionReference()).isEqualTo("TX-001");
@@ -295,7 +297,7 @@ class PaymentServiceImplTest {
     }
 
     @Test
-    void handleGatewayIpnAcceptsXSecretKeyHeader() {
+    void handleSepayWebhookAcceptsRawAuthorizationKey() {
         User buyer = user(AppRole.buyer, "buyer@test.dev");
         Order order = acceptedOrder(buyer);
         Payment payment = processingPayment(order, "OB-ORDER-002");
@@ -308,18 +310,13 @@ class PaymentServiceImplTest {
 
         paymentService.handleSepayWebhook("""
                 {
-                  "notification_type": "ORDER_PAID",
-                  "order": {
-                    "order_id": "SPAY-001",
-                    "order_invoice_number": "OB-ORDER-002"
-                  },
-                  "transaction": {
-                    "transaction_id": "TRX-8899",
-                    "transaction_amount": "2000000",
-                    "transaction_date": "2026-03-12T11:00:00+07:00"
-                  }
+                  "code": "OB-ORDER-002",
+                  "transferType": "in",
+                  "transferAmount": 2000000,
+                  "referenceCode": "TRX-8899",
+                  "transactionDate": "2026-03-12 11:00:00"
                 }
-                """, null, "secret-key");
+                """, "secret-key");
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.success);
         assertThat(payment.getTransactionReference()).isEqualTo("TRX-8899");
@@ -338,7 +335,7 @@ class PaymentServiceImplTest {
                           "transferType": "in",
                           "transferAmount": 2000000
                         }
-                        """, null, null))
+                        """, null))
                 .isInstanceOfSatisfying(AppException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_VALIDATION_FAILED));
     }

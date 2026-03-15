@@ -52,8 +52,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
-
-    private static final String SEPAY_ORDER_NOTIFICATION = "ORDER_PAID";
     private static final DateTimeFormatter ORDER_CODE_TIMESTAMP_FORMAT =
             DateTimeFormatter.ofPattern("HHmmss");
 
@@ -160,8 +158,8 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public void handleSepayWebhook(String rawPayload, String authorizationHeader, String secretKeyHeader) {
-        validateWebhookAuthorization(authorizationHeader, secretKeyHeader);
+    public void handleSepayWebhook(String rawPayload, String authorizationHeader) {
+        validateWebhookAuthorization(authorizationHeader);
 
         ResolvedWebhookPayload webhookPayload = resolveWebhookPayload(rawPayload);
         if (webhookPayload == null) {
@@ -339,52 +337,8 @@ public class PaymentServiceImpl implements PaymentService {
             throw new AppException(ErrorCode.PAYMENT_VALIDATION_FAILED);
         }
 
-        JsonNode root = parseJson(rawPayload);
-        if (root.hasNonNull("notification_type") && root.has("order")) {
-            return resolveGatewayIpn(root, rawPayload);
-        }
-
         SepayWebhookRequestDTO legacyPayload = parseLegacyWebhook(rawPayload);
         return resolveLegacyWebhook(legacyPayload, rawPayload);
-    }
-
-    private ResolvedWebhookPayload resolveGatewayIpn(JsonNode root, String rawPayload) {
-        String notificationType = textOrNull(root, "notification_type");
-        if (!SEPAY_ORDER_NOTIFICATION.equalsIgnoreCase(notificationType)) {
-            return null;
-        }
-
-        JsonNode orderNode = root.path("order");
-        JsonNode transactionNode = root.path("transaction");
-        String gatewayOrderCode = firstNonBlank(
-                textOrNull(orderNode, "order_invoice_number"),
-                textOrNull(orderNode, "order_code")
-        );
-        BigDecimal transactionAmount = parseBigDecimal(firstNonBlank(
-                textOrNull(transactionNode, "transaction_amount"),
-                textOrNull(orderNode, "amount")
-        ));
-        String transactionReference = firstNonBlank(
-                textOrNull(transactionNode, "transaction_id"),
-                textOrNull(transactionNode, "gateway_transaction_id"),
-                textOrNull(orderNode, "order_id")
-        );
-        LocalDateTime paymentDate = parseDateTime(firstNonBlank(
-                textOrNull(transactionNode, "transaction_date"),
-                textOrNull(root, "created_at")
-        ));
-
-        if (!hasText(gatewayOrderCode) || transactionAmount == null) {
-            throw new AppException(ErrorCode.PAYMENT_VALIDATION_FAILED);
-        }
-
-        return new ResolvedWebhookPayload(
-                gatewayOrderCode,
-                transactionAmount,
-                transactionReference,
-                paymentDate,
-                rawPayload
-        );
     }
 
     private ResolvedWebhookPayload resolveLegacyWebhook(SepayWebhookRequestDTO requestDTO, String rawPayload) {
@@ -453,7 +407,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
-    private void validateWebhookAuthorization(String authorizationHeader, String secretKeyHeader) {
+    private void validateWebhookAuthorization(String authorizationHeader) {
         if (!hasText(sepayProperties.getWebhookApiKey())) {
             if (!sepayProperties.isMockMode()) {
                 throw new AppException(ErrorCode.PAYMENT_VALIDATION_FAILED);
@@ -463,10 +417,8 @@ public class PaymentServiceImpl implements PaymentService {
 
         String expectedKey = sepayProperties.getWebhookApiKey().trim();
         String normalizedAuth = authorizationHeader == null ? "" : authorizationHeader.trim();
-        String normalizedSecret = secretKeyHeader == null ? "" : secretKeyHeader.trim();
 
-        boolean matches = expectedKey.equals(normalizedSecret)
-                || expectedKey.equals(normalizedAuth)
+        boolean matches = expectedKey.equals(normalizedAuth)
                 || ("Apikey " + expectedKey).equalsIgnoreCase(normalizedAuth);
         if (!matches) {
             throw new AppException(ErrorCode.PAYMENT_VALIDATION_FAILED);
