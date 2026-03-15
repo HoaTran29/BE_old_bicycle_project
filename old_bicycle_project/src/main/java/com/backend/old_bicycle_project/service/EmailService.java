@@ -10,12 +10,17 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -83,8 +88,11 @@ public class EmailService {
     public void sendVerificationEmail(User user, String token) {
         sendEmail(
                 user.getEmail(),
-                "Xac thuc tai khoan - Old Bicycles Marketplace",
-                buildVerificationEmailHtml(user, frontendUrl + "/api/auth/verify-email?token=" + token)
+                "Xác thực tài khoản - Old Bicycles Marketplace",
+                renderTemplate("email-verification.html", Map.of(
+                        "displayName", resolveDisplayName(user),
+                        "actionUrl", frontendUrl + "/api/auth/verify-email?token=" + token
+                ))
         );
     }
 
@@ -92,15 +100,18 @@ public class EmailService {
     public void sendPasswordResetEmail(User user, String token) {
         sendEmail(
                 user.getEmail(),
-                "Dat lai mat khau - Old Bicycles Marketplace",
-                buildPasswordResetEmailHtml(user, frontendUrl + "/reset-password?token=" + token)
+                "Đặt lại mật khẩu - Old Bicycles Marketplace",
+                renderTemplate("password-reset.html", Map.of(
+                        "displayName", resolveDisplayName(user),
+                        "actionUrl", frontendUrl + "/reset-password?token=" + token
+                ))
         );
     }
 
     private void sendEmail(String recipient, String subject, String html) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
 
             helper.setFrom(fromEmail);
             helper.setTo(recipient);
@@ -114,47 +125,22 @@ public class EmailService {
         }
     }
 
-    private String buildVerificationEmailHtml(User user, String verifyUrl) {
-        String displayName = user.getFirstName() != null ? user.getFirstName() : user.getEmail();
-        return """
-                <!DOCTYPE html>
-                <html lang="vi">
-                <head><meta charset="UTF-8"></head>
-                <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; margin:0; padding:20px;">
-                  <div style="max-width:600px; margin:0 auto; background:#fff; border-radius:8px; padding:40px; box-shadow:0 2px 10px rgba(0,0,0,0.1);">
-                    <h2 style="color:#333;">Xin chao %s!</h2>
-                    <p style="color:#666; line-height:1.6;">Vui long bam vao nut ben duoi de xac thuc email cua ban.</p>
-                    <div style="text-align:center; margin:30px 0;">
-                      <a href="%s" style="background-color:#e67e22; color:#fff; padding:14px 32px; text-decoration:none; border-radius:6px; font-size:16px; font-weight:bold; display:inline-block;">
-                        Xac thuc Email
-                      </a>
-                    </div>
-                    <p style="color:#999; font-size:13px;">Link nay co hieu luc trong 24 gio.</p>
-                  </div>
-                </body>
-                </html>
-                """.formatted(displayName, verifyUrl);
+    private String resolveDisplayName(User user) {
+        return user.getFirstName() != null && !user.getFirstName().isBlank()
+                ? user.getFirstName()
+                : user.getEmail();
     }
 
-    private String buildPasswordResetEmailHtml(User user, String resetUrl) {
-        String displayName = user.getFirstName() != null ? user.getFirstName() : user.getEmail();
-        return """
-                <!DOCTYPE html>
-                <html lang="vi">
-                <head><meta charset="UTF-8"></head>
-                <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; margin:0; padding:20px;">
-                  <div style="max-width:600px; margin:0 auto; background:#fff; border-radius:8px; padding:40px; box-shadow:0 2px 10px rgba(0,0,0,0.1);">
-                    <h2 style="color:#333;">Xin chao %s!</h2>
-                    <p style="color:#666; line-height:1.6;">He thong da nhan yeu cau dat lai mat khau cho tai khoan cua ban.</p>
-                    <div style="text-align:center; margin:30px 0;">
-                      <a href="%s" style="background-color:#e67e22; color:#fff; padding:14px 32px; text-decoration:none; border-radius:6px; font-size:16px; font-weight:bold; display:inline-block;">
-                        Dat lai mat khau
-                      </a>
-                    </div>
-                    <p style="color:#999; font-size:13px;">Link nay co hieu luc trong 60 phut. Neu ban khong thuc hien yeu cau nay, hay bo qua email.</p>
-                  </div>
-                </body>
-                </html>
-                """.formatted(displayName, resetUrl);
+    private String renderTemplate(String templateName, Map<String, String> placeholders) {
+        try {
+            ClassPathResource resource = new ClassPathResource("mail/" + templateName);
+            String html = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
+            for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+                html = html.replace("{{" + entry.getKey() + "}}", entry.getValue());
+            }
+            return html;
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot load email template: " + templateName, e);
+        }
     }
 }
