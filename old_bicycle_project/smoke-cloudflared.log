@@ -1,0 +1,33 @@
+{"level":"info","time":"2026-03-14T14:04:00Z","message":"Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps"}
+{"level":"info","time":"2026-03-14T14:04:00Z","message":"Requesting new quick Tunnel on trycloudflare.com..."}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"+--------------------------------------------------------------------------------------------+"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"|  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"|  https://bestsellers-vhs-termination-monday.trycloudflare.com                              |"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"+--------------------------------------------------------------------------------------------+"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp]"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"Version 2025.8.1 (Checksum b5d598b00cc3a28cabc5812d9f762819334614bae452db4e7f23eefe7b081556)"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"GOOS: windows, GOVersion: go1.24.2, GoArch: amd64"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"Settings: map[ha-connections:1 logfile:e:\\Old_bicycle_system\\BE_old_bicycle_project\\old_bicycle_project\\smoke-cloudflared.log no-autoupdate:true protocol:quic url:http://localhost:8080]"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"cloudflared will not automatically update on Windows systems."}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"Generated Connector ID: b2f6dee7-3b45-4c97-b597-700962a310ad"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"Initial protocol quic"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"ICMP proxy will use 192.168.1.16 as source for IPv4"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"ICMP proxy will use 2606:4700:110:8e6b:743:81c3:29b2:7d65 in zone CloudflareWARP as source for IPv6"}
+{"level":"error","originCertPath":"","time":"2026-03-14T14:04:05Z","message":"Cannot determine default origin certificate path. No file cert.pem in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp]. You need to specify the origin certificate path by specifying the origincert option in the configuration file, or set TUNNEL_ORIGIN_CERT environment variable"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"cloudflared does not support loading the system root certificate pool on Windows. Please use --origin-ca-pool <PATH> to specify the path to the certificate pool"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"ICMP proxy will use 192.168.1.16 as source for IPv4"}
+{"level":"info","event":0,"ip":"198.41.200.193","connIndex":0,"time":"2026-03-14T14:04:05Z","message":"Tunnel connection curve preferences: [X25519MLKEM768 CurveP256]"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"ICMP proxy will use 2606:4700:110:8e6b:743:81c3:29b2:7d65 in zone CloudflareWARP as source for IPv6"}
+{"level":"info","time":"2026-03-14T14:04:05Z","message":"Starting metrics server on 127.0.0.1:20241/metrics"}
+{"level":"error","event":0,"ip":"198.41.200.193","connIndex":0,"error":"failed to dial to edge with quic: timeout: no recent network activity","time":"2026-03-14T14:04:10Z","message":"Failed to dial a quic connection"}
+{"level":"info","event":0,"ip":"198.41.200.193","connIndex":0,"time":"2026-03-14T14:04:10Z","message":"Retrying connection in up to 2s"}
+{"level":"info","event":0,"ip":"198.41.192.47","connIndex":0,"time":"2026-03-14T14:04:12Z","message":"Tunnel connection curve preferences: [X25519MLKEM768 CurveP256]"}
+{"level":"error","event":0,"ip":"198.41.192.47","connIndex":0,"error":"failed to dial to edge with quic: timeout: handshake did not complete in time","time":"2026-03-14T14:04:22Z","message":"Failed to dial a quic connection"}
+{"level":"info","event":0,"ip":"198.41.192.47","connIndex":0,"time":"2026-03-14T14:04:22Z","message":"Retrying connection in up to 4s"}
+{"level":"info","event":0,"ip":"198.41.192.227","connIndex":0,"time":"2026-03-14T14:04:23Z","message":"Tunnel connection curve preferences: [X25519MLKEM768 CurveP256]"}
+{"level":"error","event":0,"ip":"198.41.192.227","connIndex":0,"error":"failed to dial to edge with quic: timeout: handshake did not complete in time","time":"2026-03-14T14:04:33Z","message":"Failed to dial a quic connection"}
+{"level":"info","event":0,"ip":"198.41.192.227","connIndex":0,"time":"2026-03-14T14:04:33Z","message":"Retrying connection in up to 8s"}
+{"level":"info","event":0,"ip":"198.41.192.47","connIndex":0,"time":"2026-03-14T14:04:37Z","message":"Tunnel connection curve preferences: [X25519MLKEM768 CurveP256]"}
+{"level":"error","event":0,"ip":"198.41.192.47","connIndex":0,"error":"failed to dial to edge with quic: timeout: handshake did not complete in time","time":"2026-03-14T14:04:47Z","message":"Failed to dial a quic connection"}
+{"level":"info","event":0,"ip":"198.41.192.47","connIndex":0,"time":"2026-03-14T14:04:47Z","message":"Retrying connection in up to 16s"}
+{"level":"info","event":0,"ip":"198.41.200.33","connIndex":0,"time":"2026-03-14T14:04:47Z","message":"Tunnel connection curve preferences: [X25519MLKEM768 CurveP256]"}
