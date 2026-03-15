@@ -32,135 +32,138 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final UserDetailsService userDetailsService;
-    private final OAuth2SuccessHandler oAuth2SuccessHandler;
+        private final JwtAuthenticationFilter jwtAuthenticationFilter;
+        private final UserDetailsService userDetailsService;
+        private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
-    /**
-     * Filter chain 1: Public endpoints — KHÔNG cần xác thực
-     */
-    @Bean
-    @Order(1)
-    public SecurityFilterChain publicFilterChain(HttpSecurity http) throws Exception {
-        http
-                .securityMatchers(matchers -> matchers.requestMatchers(
-                        // Auth public
-                        "/api/auth/register",
-                        "/api/auth/login",
-                        "/api/auth/refresh",
-                        "/api/auth/verify-email",
-                        // Swagger UI
-                        "/swagger-ui/**",
-                        "/swagger-ui.html",
-                        "/v3/api-docs/**",
-                        // OAuth2
-                        "/oauth2/**",
-                        "/login/oauth2/**"
-                ))
-                .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
-                .authorizeHttpRequests(auth -> auth
-                        .anyRequest().permitAll()
-                );
+        /**
+         * Filter chain 1: Public endpoints — KHÔNG cần xác thực
+         */
+        @Bean
+        @Order(1)
+        public SecurityFilterChain publicFilterChain(HttpSecurity http) throws Exception {
+                http
+                                .securityMatchers(matchers -> matchers.requestMatchers(
+                                                // Auth public
+                                                "/api/auth/register",
+                                                "/api/auth/login",
+                                                "/api/auth/refresh",
+                                                "/api/auth/forgot-password",
+                                                "/api/auth/reset-password",
+                                                "/api/auth/verify-email",
+                                                "/api/payments/sepay/webhook",
+                                                "/api/auth/profile",
+                                                "/api/auth/change-password",
+                                                // Swagger UI
+                                                "/swagger-ui/**",
+                                                "/swagger-ui.html",
+                                                "/v3/api-docs/**",
+                                                // OAuth2
+                                                "/oauth2/**",
+                                                "/login/oauth2/**"))
+                                .csrf(AbstractHttpConfigurer::disable)
+                                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .authorizeHttpRequests(auth -> auth
+                                                .anyRequest().permitAll());
 
-        return http.build();
-    }
+                return http.build();
+        }
 
-    /**
-     * Filter chain 2: Protected endpoints — cần JWT hoặc OAuth2
-     */
-    @Bean
-    @Order(2)
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
-                .authorizeHttpRequests(auth -> auth
-                        // ===== Product public endpoints (GET only) =====
-                        .requestMatchers(HttpMethod.GET,
-                                "/api/products",
-                                "/api/products/*",
-                                "/api/brands",
-                                "/api/brands/*",
-                                "/api/categories",
-                                "/api/categories/*",
-                                "/api/brake-types",
-                                "/api/frame-materials"
-                        ).permitAll()
+        /**
+         * Filter chain 2: Protected endpoints — cần JWT hoặc OAuth2
+         */
+        @Bean
+        @Order(2)
+        public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+                http
+                                .csrf(AbstractHttpConfigurer::disable)
+                                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .authorizeHttpRequests(auth -> auth
+                                                // ===== Product public endpoints (GET only) =====
+                                                .requestMatchers(HttpMethod.GET,
+                                                                "/api/products",
+                                                                "/api/products/*",
+                                                                "/api/brands",
+                                                                "/api/brands/*",
+                                                                "/api/categories",
+                                                                "/api/categories/*",
+                                                                "/api/brake-types",
+                                                                "/api/frame-materials")
+                                                .permitAll()
 
-                        // ===== WebSocket =====
-                        .requestMatchers("/ws/**").permitAll()
+                                                // ===== WebSocket =====
+                                                .requestMatchers("/ws/**").permitAll()
 
-                        // ===== Admin only =====
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                                                // ===== Admin only =====
+                                                .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
-                        // ===== Inspector =====
-                        .requestMatchers(HttpMethod.POST, "/api/inspections").hasAnyRole("INSPECTOR", "ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/inspections/*").hasAnyRole("INSPECTOR", "ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/inspections/**").permitAll()
+                                                // ===== Inspector =====
+                                                .requestMatchers(HttpMethod.POST, "/api/inspections/request/*")
+                                                .hasAnyRole("SELLER", "ADMIN")
+                                                .requestMatchers(HttpMethod.POST, "/api/inspections/evaluate/*")
+                                                .hasAnyRole("INSPECTOR", "ADMIN")
+                                                .requestMatchers(HttpMethod.GET, "/api/inspections/**").permitAll()
 
-                        // ===== Seller =====
-                        .requestMatchers(HttpMethod.POST, "/api/products").hasAnyRole("SELLER", "ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/products/*").hasAnyRole("SELLER", "ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/products/*").hasAnyRole("SELLER", "ADMIN")
+                                                // ===== Seller =====
+                                                .requestMatchers(HttpMethod.POST, "/api/products")
+                                                .hasAnyRole("SELLER", "ADMIN")
+                                                .requestMatchers(HttpMethod.PUT, "/api/products/*")
+                                                .hasAnyRole("SELLER", "ADMIN")
+                                                .requestMatchers(HttpMethod.DELETE, "/api/products/*")
+                                                .hasAnyRole("SELLER", "ADMIN")
 
-                        // ===== Buyer & Seller =====
-                        .requestMatchers("/api/orders/**").hasAnyRole("BUYER", "SELLER", "ADMIN")
+                                                // ===== Buyer & Seller =====
+                                                .requestMatchers("/api/orders/**")
+                                                .hasAnyRole("BUYER", "SELLER", "ADMIN")
 
-                        // ===== Authenticated (any role) =====
-                        .anyRequest().authenticated()
-                )
-                .oauth2Login(oauth2 -> oauth2
-                        .successHandler(oAuth2SuccessHandler)
-                )
-                .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint((request, response, authException) -> {
-                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                            response.setContentType("application/json;charset=UTF-8");
-                            response.getWriter().write(
-                                    "{\"error\":\"Unauthorized\",\"message\":\"Bạn cần đăng nhập để truy cập API này\"}"
-                            );
-                        })
-                )
-                .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                                                // ===== Authenticated (any role) =====
+                                                .anyRequest().authenticated())
+                                .oauth2Login(oauth2 -> oauth2
+                                                .successHandler(oAuth2SuccessHandler))
+                                .exceptionHandling(ex -> ex
+                                                .authenticationEntryPoint((request, response, authException) -> {
+                                                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                                                        response.setContentType("application/json;charset=UTF-8");
+                                                        response.getWriter().write(
+                                                                        "{\"error\":\"Unauthorized\",\"message\":\"Bạn cần đăng nhập để truy cập API này\"}");
+                                                }))
+                                .authenticationProvider(authenticationProvider())
+                                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
-        return http.build();
-    }
+                return http.build();
+        }
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(true);
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
-    }
+        @Bean
+        public CorsConfigurationSource corsConfigurationSource() {
+                CorsConfiguration configuration = new CorsConfiguration();
+                configuration.setAllowedOriginPatterns(List.of("*"));
+                configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+                configuration.setAllowedHeaders(List.of("*"));
+                configuration.setAllowCredentials(true);
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+                source.registerCorsConfiguration("/**", configuration);
+                return source;
+        }
 
-    @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
-    }
+        @Bean
+        public AuthenticationProvider authenticationProvider() {
+                DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+                authProvider.setUserDetailsService(userDetailsService);
+                authProvider.setPasswordEncoder(passwordEncoder());
+                return authProvider;
+        }
 
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();
-    }
+        @Bean
+        public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+                return config.getAuthenticationManager();
+        }
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+        @Bean
+        public PasswordEncoder passwordEncoder() {
+                return new BCryptPasswordEncoder();
+        }
 }

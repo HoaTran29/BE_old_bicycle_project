@@ -13,7 +13,7 @@ public class AuthResponse {
     private String accessToken;
     private String refreshToken;
     private String tokenType;
-    private Long expiresIn; // giây
+    private Long expiresIn;
     private UserInfo user;
 
     @Data
@@ -23,6 +23,9 @@ public class AuthResponse {
         private String email;
         private String firstName;
         private String lastName;
+        private String phone;
+        private String avatarUrl;
+        private String defaultAddress;
         private AppRole role;
         private UserStatus status;
         private boolean isVerified;

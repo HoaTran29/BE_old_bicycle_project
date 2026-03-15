@@ -28,21 +28,14 @@ public class ProductResponse {
     private String groupset;
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;
-
-    // Thông tin seller
     private SellerInfo seller;
-
-    // Thông tin tham chiếu
     private String brandName;
     private String categoryName;
     private String brakeTypeName;
     private String frameMaterialName;
-
-    // Ảnh sản phẩm
     private List<ImageInfo> images;
-
-    // Verified Badge — true nếu có inspection passed còn hạn
     private boolean isVerified;
+    private InspectionInfo inspection;
 
     @Data
     @Builder
@@ -61,5 +54,16 @@ public class ProductResponse {
         private String url;
         private boolean isPrimary;
         private int displayOrder;
+    }
+
+    @Data
+    @Builder
+    public static class InspectionInfo {
+        private UUID id;
+        private BigDecimal overallScore;
+        private Boolean passed;
+        private String reportFileUrl;
+        private LocalDateTime validUntil;
+        private LocalDateTime createdAt;
     }
 }

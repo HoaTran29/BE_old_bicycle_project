@@ -32,8 +32,12 @@ public class ProductCreateRequest {
     private UUID brandId;
     private UUID categoryId;
 
+    @NotBlank(message = "Vui lòng nhập kích thước khung")
     private String frameSize;
+
+    @NotBlank(message = "Vui lòng nhập kích thước bánh")
     private String wheelSize;
+
     private String groupset;
 
     private ConditionType condition;

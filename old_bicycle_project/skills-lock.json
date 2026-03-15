@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "flyway-migrations": {
+      "source": "ashchupliak/dream-team",
+      "sourceType": "github",
+      "computedHash": "a10d2e32687a746ec30bcd97c070216453c772c6a8633f9a1da8198fecb73d6a"
+    },
+    "java-springboot": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "computedHash": "f1b9c6b1277178fc33e5a612761c1cd1cf6ab5f946d05d69d52026d142c0a0c1"
+    },
+    "jpa-patterns": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "github",
+      "computedHash": "9e81a5773027f8ea3079cbdd3fbbee01ec1e7891f8dd663a4cef3cf3ba208061"
+    },
+    "spring-boot-rest-api-standards": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "computedHash": "579dd418485b6cf647b858b850427fc556db10840966a4327438d8286e46f3ad"
+    },
+    "spring-boot-security-jwt": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "computedHash": "f3af9317267383ebddeede046215d60b234d3a4d7c0746189b801a5d43614bbd"
+    },
+    "spring-boot-test-patterns": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "computedHash": "14bc8e272947168d4d62ba5cfab0ecac18220e1b3a1630c83e8a558bf44c203e"
+    }
+  }
+}

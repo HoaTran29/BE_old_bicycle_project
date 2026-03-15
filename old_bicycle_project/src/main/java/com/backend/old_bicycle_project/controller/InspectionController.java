@@ -1,0 +1,63 @@
+package com.backend.old_bicycle_project.controller;
+
+import com.backend.old_bicycle_project.dto.request.InspectionEvaluationDTO;
+import com.backend.old_bicycle_project.dto.response.ApiResponse;
+import com.backend.old_bicycle_project.dto.response.InspectionResponseDTO;
+import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.service.InspectionService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/inspections")
+@RequiredArgsConstructor
+public class InspectionController {
+
+    private final InspectionService inspectionService;
+
+    @PostMapping("/request/{productId}")
+    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<InspectionResponseDTO>> requestInspection(
+            @PathVariable UUID productId,
+            @AuthenticationPrincipal User currentUser) {
+        InspectionResponseDTO responseDTO = inspectionService.requestInspection(productId, currentUser.getId());
+        return ResponseEntity.ok(ApiResponse.<InspectionResponseDTO>builder()
+                .code(200)
+                .message("Inspection requested successfully")
+                .result(responseDTO)
+                .build());
+    }
+
+    @PostMapping("/evaluate/{productId}")
+    @PreAuthorize("hasAnyRole('INSPECTOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<InspectionResponseDTO>> evaluateInspection(
+            @PathVariable UUID productId,
+            @AuthenticationPrincipal User currentUser,
+            @RequestBody @Valid InspectionEvaluationDTO evaluationDTO) {
+        InspectionResponseDTO responseDTO =
+                inspectionService.evaluateInspection(productId, currentUser.getId(), evaluationDTO);
+        return ResponseEntity.ok(ApiResponse.<InspectionResponseDTO>builder()
+                .code(200)
+                .message("Inspection evaluated successfully")
+                .result(responseDTO)
+                .build());
+    }
+
+    @GetMapping("/product/{productId}")
+    public ResponseEntity<ApiResponse<InspectionResponseDTO>> getInspectionByProductId(
+            @PathVariable UUID productId) {
+        
+        InspectionResponseDTO responseDTO = inspectionService.getInspectionByProductId(productId);
+        return ResponseEntity.ok(ApiResponse.<InspectionResponseDTO>builder()
+                .code(200)
+                .message("Inspection fetched successfully")
+                .result(responseDTO)
+                .build());
+    }
+}

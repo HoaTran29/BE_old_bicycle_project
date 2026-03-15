@@ -3,7 +3,11 @@ package com.backend.old_bicycle_project.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
@@ -26,6 +30,9 @@ public class StorageService {
     @Value("${supabase.anon-key}")
     private String supabaseAnonKey;
 
+    @Value("${supabase.service-role-key:}")
+    private String supabaseServiceRoleKey;
+
     @Value("${supabase.storage.bucket:product-images}")
     private String bucket;
 
@@ -34,8 +41,8 @@ public class StorageService {
     /**
      * Upload file lên Supabase Storage, trả về public URL.
      *
-     * @param file      file ảnh từ multipart request
-     * @param folder    folder trong bucket, ví dụ "products/{productId}"
+     * @param file   file ảnh từ multipart request
+     * @param folder folder trong bucket, ví dụ "products/{productId}"
      * @return public URL của file đã upload
      */
     public String uploadFile(MultipartFile file, String folder) {
@@ -44,7 +51,7 @@ public class StorageService {
         String uploadUrl = supabaseUrl + "/storage/v1/object/" + bucket + "/" + path;
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + supabaseAnonKey);
+        applyStorageAuthorization(headers);
         headers.setContentType(MediaType.parseMediaType(
                 file.getContentType() != null ? file.getContentType() : "application/octet-stream"
         ));
@@ -56,11 +63,9 @@ public class StorageService {
             );
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                // Trả về public URL
                 return supabaseUrl + "/storage/v1/object/public/" + bucket + "/" + path;
-            } else {
-                throw new RuntimeException("Upload ảnh thất bại: " + response.getStatusCode());
             }
+            throw new RuntimeException("Upload ảnh thất bại: " + response.getStatusCode());
         } catch (IOException e) {
             throw new RuntimeException("Không thể đọc file: " + e.getMessage(), e);
         }
@@ -72,15 +77,16 @@ public class StorageService {
      * @param fileUrl public URL của file cần xóa
      */
     public void deleteFile(String fileUrl) {
-        // Lấy path từ URL
         String prefix = supabaseUrl + "/storage/v1/object/public/" + bucket + "/";
-        if (!fileUrl.startsWith(prefix)) return;
+        if (!fileUrl.startsWith(prefix)) {
+            return;
+        }
 
         String path = fileUrl.substring(prefix.length());
         String deleteUrl = supabaseUrl + "/storage/v1/object/" + bucket + "/" + path;
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + supabaseAnonKey);
+        applyStorageAuthorization(headers);
 
         try {
             restTemplate.exchange(deleteUrl, HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
@@ -88,5 +94,25 @@ public class StorageService {
         } catch (Exception e) {
             log.warn("Không thể xóa file {}: {}", path, e.getMessage());
         }
+    }
+
+    private void applyStorageAuthorization(HttpHeaders headers) {
+        String apiKey = resolveStorageApiKey();
+        headers.set("apikey", apiKey);
+
+        if (isJwtStyleKey(apiKey)) {
+            headers.setBearerAuth(apiKey);
+        }
+    }
+
+    private String resolveStorageApiKey() {
+        if (supabaseServiceRoleKey != null && !supabaseServiceRoleKey.isBlank()) {
+            return supabaseServiceRoleKey;
+        }
+        return supabaseAnonKey;
+    }
+
+    private boolean isJwtStyleKey(String apiKey) {
+        return apiKey != null && apiKey.chars().filter(ch -> ch == '.').count() == 2;
     }
 }

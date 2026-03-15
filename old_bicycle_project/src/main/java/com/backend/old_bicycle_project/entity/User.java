@@ -4,6 +4,8 @@ import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -47,6 +49,7 @@ public class User implements UserDetails {
     private String defaultAddress;
 
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     @Column(columnDefinition = "app_role")
     @Builder.Default
     private AppRole role = AppRole.buyer;
@@ -56,9 +59,18 @@ public class User implements UserDetails {
     private boolean isVerified = false;
 
     @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
     @Column(columnDefinition = "user_status")
     @Builder.Default
     private UserStatus status = UserStatus.active;
+
+    @Column(name = "average_rating")
+    @Builder.Default
+    private Double averageRating = 0.0;
+
+    @Column(name = "total_reviews")
+    @Builder.Default
+    private Integer totalReviews = 0;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -112,5 +124,13 @@ public class User implements UserDetails {
     @Override
     public boolean isEnabled() {
         return status == UserStatus.active;
+    }
+
+    // Helper method
+    public String getFullName() {
+        if (firstName == null && lastName == null) return "Unknown";
+        if (firstName == null) return lastName;
+        if (lastName == null) return firstName;
+        return firstName + " " + lastName;
     }
 }
