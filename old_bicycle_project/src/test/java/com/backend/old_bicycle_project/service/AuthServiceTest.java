@@ -8,8 +8,11 @@ import com.backend.old_bicycle_project.dto.auth.ResetPasswordRequest;
 import com.backend.old_bicycle_project.entity.EmailVerification;
 import com.backend.old_bicycle_project.entity.PasswordResetToken;
 import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.entity.RefreshToken;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.UserStatus;
+import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.security.JwtTokenProvider;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -25,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -89,6 +94,45 @@ class AuthServiceTest {
     }
 
     @Test
+    void registerWithMissingRoleDefaultsToBuyer() {
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("newbuyer@test.dev");
+        request.setPassword("StrongPass1");
+        request.setFirstName("Minh");
+        request.setLastName("Le");
+        request.setRole(null);
+
+        when(userRepository.existsByEmail("newbuyer@test.dev")).thenReturn(false);
+        when(passwordEncoder.encode("StrongPass1")).thenReturn("encoded-password");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(emailService.createVerificationToken(any(User.class))).thenReturn(EmailVerification.builder()
+                .token("verify-token")
+                .build());
+
+        authService.register(request);
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getRole()).isEqualTo(AppRole.buyer);
+    }
+
+    @Test
+    void registerRejectsWeakPassword() {
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("weak@test.dev");
+        request.setPassword("weak");
+        request.setFirstName("Weak");
+        request.setLastName("User");
+        request.setRole(AppRole.buyer);
+
+        when(userRepository.existsByEmail("weak@test.dev")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.register(request))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_PASSWORD));
+    }
+
+    @Test
     void requestPasswordResetReturnsGenericMessageAndSendsEmailWhenUserExists() {
         User user = user("buyer@test.dev");
         PasswordResetToken resetToken = PasswordResetToken.builder()
@@ -104,6 +148,47 @@ class AuthServiceTest {
 
         verify(emailService).sendPasswordResetEmail(user, "reset-token");
         assertThat(message).contains("Neu email ton tai");
+    }
+
+    @Test
+    void refreshTokenReturnsNewAccessTokenWhenTokenIsValid() {
+        ReflectionTestUtils.setField(authService, "accessTokenExpiration", 900000L);
+        User user = user("buyer@test.dev");
+        RefreshToken refreshToken = RefreshToken.builder()
+                .user(user)
+                .token("refresh-token")
+                .expiresAt(LocalDateTime.now().plusDays(1))
+                .build();
+
+        when(refreshTokenService.findByToken("refresh-token")).thenReturn(Optional.of(refreshToken));
+        when(jwtTokenProvider.generateAccessToken(user)).thenReturn("new-access-token");
+
+        var response = authService.refreshToken(new com.backend.old_bicycle_project.dto.auth.RefreshTokenRequest() {{
+            setRefreshToken("refresh-token");
+        }});
+
+        assertThat(response.getAccessToken()).isEqualTo("new-access-token");
+        assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
+    }
+
+    @Test
+    void refreshTokenRejectsExpiredTokenAndRevokesUserSessions() {
+        User user = user("buyer@test.dev");
+        RefreshToken refreshToken = RefreshToken.builder()
+                .user(user)
+                .token("refresh-token")
+                .expiresAt(LocalDateTime.now().minusMinutes(1))
+                .build();
+
+        when(refreshTokenService.findByToken("refresh-token")).thenReturn(Optional.of(refreshToken));
+
+        assertThatThrownBy(() -> authService.refreshToken(new com.backend.old_bicycle_project.dto.auth.RefreshTokenRequest() {{
+                    setRefreshToken("refresh-token");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED));
+
+        verify(refreshTokenService).deleteAllByUser(user);
     }
 
     @Test

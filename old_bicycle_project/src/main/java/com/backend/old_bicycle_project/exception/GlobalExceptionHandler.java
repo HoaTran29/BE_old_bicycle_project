@@ -49,20 +49,22 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(value = MethodArgumentNotValidException.class)
     ResponseEntity<ApiResponse<?>> handlingValidation(MethodArgumentNotValidException exception) {
-        String enumKey = Objects.requireNonNull(exception.getFieldError()).getDefaultMessage();
+        String validationMessage = Objects.requireNonNull(exception.getFieldError()).getDefaultMessage();
 
         ErrorCode errorCode = ErrorCode.INVALID_KEY;
+        String responseMessage = validationMessage;
 
         try {
-            errorCode = ErrorCode.valueOf(enumKey);
+            errorCode = ErrorCode.valueOf(validationMessage);
+            responseMessage = errorCode.getMessage();
         } catch (IllegalArgumentException e) {
-            log.error("Invalid key exception: {}", enumKey);
+            log.error("Validation message does not map to ErrorCode enum: {}", validationMessage);
         }
 
         ApiResponse<Object> apiResponse = new ApiResponse<>();
 
         apiResponse.setCode(errorCode.getCode());
-        apiResponse.setMessage(errorCode.getMessage());
+        apiResponse.setMessage(responseMessage);
 
         return ResponseEntity.badRequest().body(apiResponse);
     }

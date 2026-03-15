@@ -1,6 +1,7 @@
 package com.backend.old_bicycle_project.service.impl;
 
 import com.backend.old_bicycle_project.dto.request.MessageRequestDTO;
+import com.backend.old_bicycle_project.entity.Message;
 import com.backend.old_bicycle_project.entity.Conversation;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
@@ -20,7 +21,9 @@ import org.springframework.data.domain.PageRequest;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -90,6 +93,37 @@ class MessageServiceImplTest {
                         .build(), outsiderId))
                 .isInstanceOfSatisfying(AppException.class,
                         ex -> org.assertj.core.api.Assertions.assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+    }
+
+    @Test
+    void sendMessageSavesMessageUpdatesConversationAndPublishesNotification() {
+        UUID conversationId = UUID.randomUUID();
+        UUID buyerId = UUID.randomUUID();
+        UUID sellerId = UUID.randomUUID();
+        Conversation conversation = conversation(buyerId, sellerId);
+        conversation.setId(conversationId);
+        User buyer = user(buyerId, "buyer@test.dev");
+
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+        when(userRepository.findById(buyerId)).thenReturn(Optional.of(buyer));
+        when(messageRepository.save(any(Message.class))).thenAnswer(invocation -> {
+            Message message = invocation.getArgument(0);
+            message.setId(UUID.randomUUID());
+            return message;
+        });
+        when(conversationRepository.save(any(Conversation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = messageService.sendMessage(MessageRequestDTO.builder()
+                .conversationId(conversationId)
+                .content("Xe con khong ban?")
+                .build(), buyerId);
+
+        assertThat(response.getConversationId()).isEqualTo(conversationId);
+        assertThat(response.getSenderId()).isEqualTo(buyerId);
+        assertThat(response.getContent()).isEqualTo("Xe con khong ban?");
+        verify(messageRepository).save(any(Message.class));
+        verify(conversationRepository).save(conversation);
+        verify(eventPublisher).publishEvent(any());
     }
 
     private Conversation conversation(UUID buyerId, UUID sellerId) {

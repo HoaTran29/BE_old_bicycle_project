@@ -36,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -322,6 +323,92 @@ class PaymentServiceImplTest {
         assertThat(payment.getTransactionReference()).isEqualTo("TRX-8899");
         assertThat(order.getStatus()).isEqualTo(OrderStatus.deposited);
         assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.held);
+    }
+
+    @Test
+    void handleSepayWebhookRejectsInvalidAuthorizationHeader() {
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        assertThatThrownBy(() -> paymentService.handleSepayWebhook("""
+                        {
+                          "code": "OB-ORDER-003",
+                          "transferType": "in",
+                          "transferAmount": 2000000
+                        }
+                        """, "Apikey wrong-key"))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_VALIDATION_FAILED));
+    }
+
+    @Test
+    void handleSepayWebhookRejectsInsufficientTransferAmount() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        Payment payment = processingPayment(order, "OB-ORDER-004");
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        when(paymentRepository.findByGatewayOrderCode("OB-ORDER-004")).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> paymentService.handleSepayWebhook("""
+                        {
+                          "code": "OB-ORDER-004",
+                          "transferType": "in",
+                          "transferAmount": 1000000,
+                          "referenceCode": "TX-LOW"
+                        }
+                        """, "Apikey secret-key"))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_VALIDATION_FAILED));
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.processing);
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void handleSepayWebhookIgnoresOutgoingTransfer() {
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        paymentService.handleSepayWebhook("""
+                {
+                  "code": "OB-ORDER-005",
+                  "transferType": "out",
+                  "transferAmount": 2000000,
+                  "referenceCode": "TX-OUT"
+                }
+                """, "Apikey secret-key");
+
+        verify(paymentRepository, never()).findByGatewayOrderCode(any());
+        verify(paymentRepository, never()).save(any(Payment.class));
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void handleSepayWebhookIsIdempotentWhenPaymentAlreadySuccessful() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        Payment payment = processingPayment(order, "OB-ORDER-006");
+        payment.setStatus(PaymentStatus.success);
+        payment.setTransactionReference("TX-OLD");
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        when(paymentRepository.findByGatewayOrderCode("OB-ORDER-006")).thenReturn(Optional.of(payment));
+
+        paymentService.handleSepayWebhook("""
+                {
+                  "code": "OB-ORDER-006",
+                  "transferType": "in",
+                  "transferAmount": 2000000,
+                  "referenceCode": "TX-NEW"
+                }
+                """, "Apikey secret-key");
+
+        assertThat(payment.getTransactionReference()).isEqualTo("TX-OLD");
+        verify(paymentRepository, never()).save(any(Payment.class));
+        verify(orderRepository, never()).save(any(Order.class));
     }
 
     @Test

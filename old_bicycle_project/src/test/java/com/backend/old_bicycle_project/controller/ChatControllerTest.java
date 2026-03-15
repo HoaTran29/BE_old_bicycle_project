@@ -3,6 +3,7 @@ package com.backend.old_bicycle_project.controller;
 import com.backend.old_bicycle_project.dto.request.MessageRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ConversationResponseDTO;
 import com.backend.old_bicycle_project.dto.response.MessageResponseDTO;
+import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.service.ConversationService;
@@ -83,7 +84,37 @@ class ChatControllerTest {
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED));
     }
 
+    @Test
+    void sendMessageRejectsPrincipalWithInvalidUuid() {
+        MessageRequestDTO request = MessageRequestDTO.builder()
+                .conversationId(UUID.randomUUID())
+                .content("Test")
+                .build();
+
+        assertThatThrownBy(() -> chatController.sendMessage(request, () -> "not-a-uuid"))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED));
+    }
+
+    @Test
+    void markAsReadDelegatesToMessageService() {
+        UUID conversationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        var response = chatController.markAsRead(conversationId, user(userId));
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getMessage()).isEqualTo("Messages marked as read");
+        verify(messageService).markMessagesAsRead(conversationId, userId);
+    }
+
     private Principal uuidPrincipal(UUID userId) {
         return userId::toString;
+    }
+
+    private User user(UUID userId) {
+        return User.builder()
+                .id(userId)
+                .build();
     }
 }
