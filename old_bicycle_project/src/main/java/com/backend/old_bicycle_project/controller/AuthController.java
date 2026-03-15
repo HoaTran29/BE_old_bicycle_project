@@ -11,6 +11,7 @@ import com.backend.old_bicycle_project.dto.auth.ResetPasswordRequest;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.AuthService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,6 +25,7 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/register")
+    @Operation(summary = "Đăng ký tài khoản", security = {})
     public ApiResponse<String> register(@Valid @RequestBody RegisterRequest request) {
         return ApiResponse.<String>builder()
                 .result(authService.register(request))
@@ -31,6 +33,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @Operation(summary = "Đăng nhập", security = {})
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.<AuthResponse>builder()
                 .result(authService.login(request))
@@ -38,6 +41,7 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
+    @Operation(summary = "Làm mới access token", security = {})
     public ApiResponse<AuthResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
         return ApiResponse.<AuthResponse>builder()
                 .result(authService.refreshToken(request))
@@ -45,6 +49,7 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
+    @Operation(summary = "Yêu cầu quên mật khẩu", security = {})
     public ApiResponse<String> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         return ApiResponse.<String>builder()
                 .result(authService.requestPasswordReset(request))
@@ -52,6 +57,7 @@ public class AuthController {
     }
 
     @PostMapping("/reset-password")
+    @Operation(summary = "Đặt lại mật khẩu", security = {})
     public ApiResponse<String> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         return ApiResponse.<String>builder()
                 .result(authService.resetPassword(request))
@@ -67,6 +73,7 @@ public class AuthController {
     }
 
     @GetMapping("/verify-email")
+    @Operation(summary = "Xác thực email", security = {})
     public ApiResponse<String> verifyEmail(@RequestParam String token) {
         return ApiResponse.<String>builder()
                 .result(authService.verifyEmail(token))

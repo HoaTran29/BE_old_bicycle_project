@@ -5,6 +5,7 @@ import com.backend.old_bicycle_project.dto.response.PaymentRequestResponseDTO;
 import com.backend.old_bicycle_project.dto.response.PaymentResponseDTO;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.PaymentService;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,6 +44,7 @@ public class PaymentController {
     }
 
     @PostMapping("/sepay/webhook")
+    @Operation(summary = "Nhận SePay WebHook callback", security = {})
     public ResponseEntity<ApiResponse<Void>> handleSepayWebhook(
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestBody String rawPayload) {

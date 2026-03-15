@@ -264,14 +264,52 @@ Ví dụ:
 
 Khi họ bấm `Try it out`, request sẽ đi qua URL public đó.
 
-## 10. Những gì cần lưu ý khi public Swagger
+## 10. Swagger bây giờ có nút `Authorize` như thế nào?
+
+Lượt này backend đã được thêm `Bearer auth` vào OpenAPI/Swagger.
+
+Điều đó có nghĩa là trong Swagger UI:
+
+- bạn sẽ thấy nút `Authorize`
+- bạn có thể nhập JWT để gọi các API protected như:
+  - `/api/orders/**`
+  - `/api/payments/orders/{orderId}`
+  - `/api/notifications/me`
+
+### Dùng như thế nào?
+
+1. Gọi `POST /api/auth/login`
+2. Copy `accessToken`
+3. Bấm `Authorize`
+4. Paste **token JWT**
+
+Với cấu hình `HTTP bearer` chuẩn, Swagger thường sẽ tự thêm tiền tố `Bearer` khi gửi request.
+
+### Những endpoint nào không cần auth?
+
+Lượt này tôi đã đánh dấu rõ các endpoint public như:
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `GET /api/auth/verify-email`
+- `POST /api/payments/sepay/webhook`
+
+Điều này giúp khi mở Swagger, bạn dễ nhìn ra:
+
+- cái nào cần token
+- cái nào là public
+
+## 11. Những gì cần lưu ý khi public Swagger
 
 1. Ai có URL ngrok đều có thể xem tài liệu API công khai.
 2. Các API protected vẫn cần JWT/Bearer token.
 3. Nếu bạn tắt backend local hoặc tắt `ngrok`, Swagger public sẽ không dùng được nữa.
 4. URL free của ngrok thường đổi sau mỗi lần restart tunnel.
 
-## 11. Kết luận ngắn
+## 12. Kết luận ngắn
 
 Ở thời điểm này:
 
