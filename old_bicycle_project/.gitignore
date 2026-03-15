@@ -1,4 +1,41 @@
-HELP.md
+# Created by https://www.toptal.com/developers/gitignore/api/java,springboot,gradle,macos,windows,linux,intellij,netbeans,vscode
+# Edit at https://www.toptal.com/developers/gitignore?templates=java,springboot,gradle,macos,windows,linux,intellij,netbeans,vscode
+
+### Java ###
+*.class
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+
+### Gradle ###
+.gradle
+build/
+
+# Ignore Gradle GUI config
+gradle-app.setting
+
+# Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
+!gradle-wrapper.jar
+
+# Cache of project
+.gradletasknamecache
+
+# Work around https://youtrack.jetbrains.com/issue/IDEA-116898
+# Serialize information about project opening times and the last time the project was accessed
+# .idea/workspace.xml
+
+# JetBrains IDEs (IntelliJHELP.md
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
@@ -35,3 +72,4 @@ build/
 .kilocode
 .codex
 .agents
+.env
