@@ -19,5 +19,7 @@ public interface OrderService {
 
     OrderResponseDTO completeOrder(UUID orderId, User currentUser);
 
+    OrderResponseDTO confirmReceived(UUID orderId, User currentUser);
+
     OrderResponseDTO cancelOrder(UUID orderId, User currentUser);
 }

@@ -53,7 +53,8 @@ public class ProductService {
     );
     private static final List<OrderStatus> ACTIVE_TRANSACTION_STATUSES = List.of(
             OrderStatus.pending,
-            OrderStatus.deposited
+            OrderStatus.deposited,
+            OrderStatus.awaiting_buyer_confirmation
     );
     private static final List<ProductStatus> ADMIN_MODERATED_STATUSES = List.of(
             ProductStatus.pending,

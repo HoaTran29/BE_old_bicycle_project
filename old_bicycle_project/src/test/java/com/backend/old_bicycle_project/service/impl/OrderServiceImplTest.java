@@ -6,9 +6,12 @@ import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
+import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
+import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
+import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import org.junit.jupiter.api.Test;
@@ -24,6 +27,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -85,6 +89,105 @@ class OrderServiceImplTest {
         assertThat(response.getRequiredUpfrontAmount()).isEqualByComparingTo("12000000");
         assertThat(response.getRemainingAmount()).isEqualByComparingTo("12000000");
         assertThat(response.getPaymentMethod()).isEqualTo(PaymentMethod.transfer);
+    }
+
+    @Test
+    void sellerCompleteMovesOrderToAwaitingBuyerConfirmation() {
+        User seller = user(AppRole.seller, "seller@test.dev");
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Trek Domane")
+                .status(ProductStatus.active)
+                .build();
+        Order order = Order.builder()
+                .id(UUID.randomUUID())
+                .buyer(buyer)
+                .seller(seller)
+                .product(product)
+                .totalAmount(new BigDecimal("15000000"))
+                .requiredUpfrontAmount(new BigDecimal("3000000"))
+                .depositAmount(new BigDecimal("3000000"))
+                .paidAmount(new BigDecimal("3000000"))
+                .remainingAmount(new BigDecimal("12000000"))
+                .status(OrderStatus.deposited)
+                .fundingStatus(OrderFundingStatus.held)
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+
+        when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponseDTO response = orderService.completeOrder(order.getId(), seller);
+
+        assertThat(response.getStatus()).isEqualTo(OrderStatus.awaiting_buyer_confirmation);
+        assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.held);
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.active);
+    }
+
+    @Test
+    void buyerConfirmReceivedCompletesOrderAndMarksProductSold() {
+        User seller = user(AppRole.seller, "seller@test.dev");
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Cannondale CAAD")
+                .status(ProductStatus.active)
+                .build();
+        Order order = Order.builder()
+                .id(UUID.randomUUID())
+                .buyer(buyer)
+                .seller(seller)
+                .product(product)
+                .totalAmount(new BigDecimal("18000000"))
+                .requiredUpfrontAmount(new BigDecimal("4000000"))
+                .depositAmount(new BigDecimal("4000000"))
+                .paidAmount(new BigDecimal("4000000"))
+                .remainingAmount(new BigDecimal("14000000"))
+                .status(OrderStatus.awaiting_buyer_confirmation)
+                .fundingStatus(OrderFundingStatus.held)
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+
+        when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponseDTO response = orderService.confirmReceived(order.getId(), buyer);
+
+        assertThat(response.getStatus()).isEqualTo(OrderStatus.completed);
+        assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.released);
+        assertThat(response.getPaidAmount()).isEqualByComparingTo("18000000");
+        assertThat(response.getRemainingAmount()).isEqualByComparingTo("0");
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.sold);
+    }
+
+    @Test
+    void sellerCannotConfirmReceivedOnBehalfOfBuyer() {
+        User seller = user(AppRole.seller, "seller@test.dev");
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Bianchi Via Nirone")
+                .status(ProductStatus.active)
+                .build();
+        Order order = Order.builder()
+                .id(UUID.randomUUID())
+                .buyer(buyer)
+                .seller(seller)
+                .product(product)
+                .status(OrderStatus.awaiting_buyer_confirmation)
+                .fundingStatus(OrderFundingStatus.held)
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+
+        when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
+
+        assertThatThrownBy(() -> orderService.confirmReceived(order.getId(), seller))
+                .isInstanceOf(AppException.class);
     }
 
     private User user(AppRole role, String email) {

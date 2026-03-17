@@ -59,6 +59,12 @@ class SecurityConfigIntegrationTest {
     }
 
     @Test
+    void anonymousUserCannotConfirmOrderReceipt() throws Exception {
+        mockMvc.perform(patch("/api/orders/11111111-1111-1111-1111-111111111111/confirm-received"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @WithMockUser(roles = "BUYER")
     void nonAdminUserCannotAccessAdminUsers() throws Exception {
         mockMvc.perform(get("/api/admin/users"))
@@ -69,6 +75,13 @@ class SecurityConfigIntegrationTest {
     @WithMockUser(roles = "BUYER")
     void nonAdminUserCannotAccessAdminProducts() throws Exception {
         mockMvc.perform(get("/api/admin/products"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "SELLER")
+    void sellerCannotConfirmOrderReceipt() throws Exception {
+        mockMvc.perform(patch("/api/orders/11111111-1111-1111-1111-111111111111/confirm-received"))
                 .andExpect(status().isForbidden());
     }
 

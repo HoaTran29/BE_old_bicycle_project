@@ -78,6 +78,33 @@ class RefundServiceImplTest {
     }
 
     @Test
+    void requestRefundIsStillAllowedWhileWaitingForBuyerConfirmation() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = depositedOrder(buyer);
+        order.setStatus(OrderStatus.awaiting_buyer_confirmation);
+        Payment payment = successfulUpfrontPayment(order);
+
+        when(orderRepository.findByIdAndBuyerId(order.getId(), buyer.getId())).thenReturn(Optional.of(order));
+        when(refundRequestRepository.findFirstByOrderIdAndStatusOrderByCreatedAtDesc(order.getId(), RefundStatus.pending))
+                .thenReturn(Optional.empty());
+        when(paymentRepository.findFirstByOrderIdAndPhaseOrderByCreatedAtDesc(order.getId(), PaymentPhase.upfront))
+                .thenReturn(Optional.of(payment));
+        when(refundRequestRepository.save(any(RefundRequest.class))).thenAnswer(invocation -> {
+            RefundRequest refundRequest = invocation.getArgument(0);
+            refundRequest.setId(UUID.randomUUID());
+            return refundRequest;
+        });
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RefundResponseDTO response = refundService.requestRefund(order.getId(), buyer, RefundCreateRequestDTO.builder()
+                .reason("Xe nhận được không đúng tình trạng đã cam kết")
+                .build());
+
+        assertThat(response.getStatus()).isEqualTo(RefundStatus.pending);
+        assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.refund_pending);
+    }
+
+    @Test
     void completeApprovedRefundCancelsOrderAndMarksPaymentRefunded() {
         User buyer = user(AppRole.buyer, "buyer@test.dev");
         User admin = user(AppRole.admin, "admin@test.dev");

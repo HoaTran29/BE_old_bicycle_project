@@ -74,8 +74,19 @@ public class OrderController {
             @PathVariable UUID orderId,
             @AuthenticationPrincipal User currentUser) {
         return ApiResponse.<OrderResponseDTO>builder()
-                .message("Order completed successfully")
+                .message("Delivery reported successfully")
                 .result(orderService.completeOrder(orderId, currentUser))
+                .build();
+    }
+
+    @PatchMapping("/{orderId}/confirm-received")
+    @PreAuthorize("hasAnyRole('BUYER', 'ADMIN')")
+    public ApiResponse<OrderResponseDTO> confirmReceived(
+            @PathVariable UUID orderId,
+            @AuthenticationPrincipal User currentUser) {
+        return ApiResponse.<OrderResponseDTO>builder()
+                .message("Order receipt confirmed successfully")
+                .result(orderService.confirmReceived(orderId, currentUser))
                 .build();
     }
 

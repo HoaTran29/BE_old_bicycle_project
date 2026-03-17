@@ -44,7 +44,9 @@ public class RefundServiceImpl implements RefundService {
         Order order = orderRepository.findByIdAndBuyerId(orderId, currentUser.getId())
                 .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
 
-        if (order.getStatus() != OrderStatus.deposited || order.getFundingStatus() != OrderFundingStatus.held) {
+        boolean refundableStatus = order.getStatus() == OrderStatus.deposited
+                || order.getStatus() == OrderStatus.awaiting_buyer_confirmation;
+        if (!refundableStatus || order.getFundingStatus() != OrderFundingStatus.held) {
             throw new AppException(ErrorCode.REFUND_NOT_ALLOWED);
         }
 
@@ -79,8 +81,8 @@ public class RefundServiceImpl implements RefundService {
 
         publishOrderNotification(
                 currentUser.getId(),
-                "Da tao yeu cau hoan tien",
-                "Yeu cau hoan tien cua ban da duoc gui cho admin xem xet.",
+                "Đã tạo yêu cầu hoàn tiền",
+                "Yêu cầu hoàn tiền của bạn đã được gửi cho admin xem xét.",
                 "{\"orderId\":\"" + order.getId() + "\",\"refundId\":\"" + refundRequest.getId() + "\"}"
         );
 
@@ -108,8 +110,8 @@ public class RefundServiceImpl implements RefundService {
 
         publishOrderNotification(
                 refundRequest.getRequester().getId(),
-                "Cap nhat yeu cau hoan tien",
-                "Admin da cap nhat trang thai yeu cau hoan tien cua ban: " + refundRequest.getStatus().name(),
+                "Cập nhật yêu cầu hoàn tiền",
+                "Admin đã cập nhật trạng thái yêu cầu hoàn tiền của bạn: " + refundRequest.getStatus().name(),
                 "{\"orderId\":\"" + order.getId() + "\",\"refundId\":\"" + refundRequest.getId() + "\"}"
         );
 

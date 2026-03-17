@@ -52,7 +52,12 @@ public class OrderServiceImpl implements OrderService {
 
         if (orderRepository.existsByProductIdAndStatusIn(
                 product.getId(),
-                List.of(OrderStatus.pending, OrderStatus.deposited, OrderStatus.completed))) {
+                List.of(
+                        OrderStatus.pending,
+                        OrderStatus.deposited,
+                        OrderStatus.awaiting_buyer_confirmation,
+                        OrderStatus.completed
+                ))) {
             throw new AppException(ErrorCode.RECORD_ALREADY_EXISTS);
         }
 
@@ -110,8 +115,8 @@ public class OrderServiceImpl implements OrderService {
 
         publishOrderNotification(
                 order.getBuyer().getId(),
-                "Yeu cau dat coc da duoc chap nhan",
-                "Nguoi ban da chap nhan order va ban co the thanh toan tien ung truoc.",
+                "Yêu cầu đặt cọc đã được chấp nhận",
+                "Người bán đã chấp nhận đơn hàng và bạn có thể thanh toán tiền ứng trước.",
                 "{\"orderId\":\"" + order.getId() + "\"}"
         );
 
@@ -150,13 +155,46 @@ public class OrderServiceImpl implements OrderService {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
+        order.setStatus(OrderStatus.awaiting_buyer_confirmation);
+        order = orderRepository.save(order);
+
+        publishOrderNotification(
+                order.getBuyer().getId(),
+                "Người bán đã báo giao xe",
+                "Hãy xác nhận bạn đã nhận xe để hệ thống giải ngân cho người bán.",
+                "{\"orderId\":\"" + order.getId() + "\"}"
+        );
+
+        return mapToDTO(order);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponseDTO confirmReceived(UUID orderId, User currentUser) {
+        Order order = getOrder(orderId);
+        validateBuyerOrAdmin(order, currentUser);
+
+        if (order.getStatus() != OrderStatus.awaiting_buyer_confirmation
+                || order.getFundingStatus() != OrderFundingStatus.held) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+
         order.setStatus(OrderStatus.completed);
         order.setFundingStatus(OrderFundingStatus.released);
         order.setPaidAmount(order.getTotalAmount());
         order.setRemainingAmount(BigDecimal.ZERO);
         order.getProduct().setStatus(ProductStatus.sold);
         productRepository.save(order.getProduct());
-        return mapToDTO(orderRepository.save(order));
+        order = orderRepository.save(order);
+
+        publishOrderNotification(
+                order.getSeller().getId(),
+                "Người mua đã xác nhận nhận xe",
+                "Giao dịch đã được hoàn tất và hệ thống đã giải ngân cho bạn.",
+                "{\"orderId\":\"" + order.getId() + "\"}"
+        );
+
+        return mapToDTO(order);
     }
 
     @Override
@@ -174,6 +212,7 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() == OrderStatus.completed
                 || order.getStatus() == OrderStatus.cancelled
                 || order.getStatus() == OrderStatus.deposited
+                || order.getStatus() == OrderStatus.awaiting_buyer_confirmation
                 || order.getFundingStatus() == OrderFundingStatus.held
                 || order.getFundingStatus() == OrderFundingStatus.refund_pending
                 || order.getFundingStatus() == OrderFundingStatus.released
@@ -218,6 +257,14 @@ public class OrderServiceImpl implements OrderService {
         boolean isSellerOrAdmin = currentUser.getRole() == AppRole.admin
                 || order.getSeller().getId().equals(currentUser.getId());
         if (!isSellerOrAdmin) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
+    }
+
+    private void validateBuyerOrAdmin(Order order, User currentUser) {
+        boolean isBuyerOrAdmin = currentUser.getRole() == AppRole.admin
+                || order.getBuyer().getId().equals(currentUser.getId());
+        if (!isBuyerOrAdmin) {
             throw new AppException(ErrorCode.FORBIDDEN);
         }
     }
