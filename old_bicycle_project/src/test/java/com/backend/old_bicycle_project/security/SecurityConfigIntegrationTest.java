@@ -1,13 +1,21 @@
 package com.backend.old_bicycle_project.security;
 
+import com.backend.old_bicycle_project.dto.response.AdminUserResponseDTO;
+import com.backend.old_bicycle_project.service.AdminUserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -18,6 +26,9 @@ class SecurityConfigIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockBean
+    private AdminUserService adminUserService;
 
     @Test
     void anonymousUserCannotUpdateProfile() throws Exception {
@@ -33,5 +44,28 @@ class SecurityConfigIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"currentPassword\":\"OldPass1\",\"newPassword\":\"StrongPass1\"}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void anonymousUserCannotAccessAdminUsers() throws Exception {
+        mockMvc.perform(get("/api/admin/users"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "BUYER")
+    void nonAdminUserCannotAccessAdminUsers() throws Exception {
+        mockMvc.perform(get("/api/admin/users"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void adminUserCanAccessAdminUsers() throws Exception {
+        when(adminUserService.getAllUsers(isNull(), isNull(), isNull(), isNull(), eq(0), eq(12)))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+
+        mockMvc.perform(get("/api/admin/users"))
+                .andExpect(status().isOk());
     }
 }

@@ -166,7 +166,9 @@ Fix:
 
 ### Missing or clearly underbuilt
 
-- Admin user management API
+- Admin user management API:
+  - [Done 2026-03-17] tranche 1: list/filter/detail/status change
+  - cÃ²n thiáº¿u reset password vÃ  user activity view Ä‘á»ƒ chạm Ä‘áº§y Ä‘á»§ FR-ADM-001
 - Seller reply-to-review API
 - Category update/delete admin API
 - Groupset / size chart reference-data management API
@@ -181,6 +183,14 @@ Fix:
 - Login now rejects users whose `isVerified` flag is still `false`.
 - Refresh-token reuse also rejects unverified accounts, so old sessions from pre-guard behavior cannot continue silently.
 - Covered by focused auth regression tests in `AuthServiceTest`.
+
+### 2026-03-17 - Admin user management tranche 1
+
+- Added `GET /api/admin/users` with keyword, role, status, and verified filters.
+- Added `GET /api/admin/users/{id}` for admin detail lookup.
+- Added `PATCH /api/admin/users/{id}/status` for active/unactive/banned management.
+- Added a guard so admins cannot change their own account status and accidentally lock themselves out.
+- Covered by focused service, controller, and security regression tests.
 
 ## Priority Backlog From This Audit
 
