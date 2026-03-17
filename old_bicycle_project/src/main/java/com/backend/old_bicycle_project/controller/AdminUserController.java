@@ -1,6 +1,8 @@
 package com.backend.old_bicycle_project.controller;
 
+import com.backend.old_bicycle_project.dto.request.AdminUserPasswordResetRequest;
 import com.backend.old_bicycle_project.dto.request.AdminUserStatusUpdateRequest;
+import com.backend.old_bicycle_project.dto.response.AdminUserActivityResponseDTO;
 import com.backend.old_bicycle_project.dto.response.AdminUserResponseDTO;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.entity.User;
@@ -61,6 +63,25 @@ public class AdminUserController {
     ) {
         return ApiResponse.<AdminUserResponseDTO>builder()
                 .result(adminUserService.updateUserStatus(id, request.getStatus(), currentUser.getId()))
+                .build();
+    }
+
+    @PatchMapping("/{id}/password")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<String> resetAdminUserPassword(
+            @PathVariable UUID id,
+            @Valid @RequestBody AdminUserPasswordResetRequest request
+    ) {
+        return ApiResponse.<String>builder()
+                .result(adminUserService.resetUserPassword(id, request.getNewPassword()))
+                .build();
+    }
+
+    @GetMapping("/{id}/activity")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<AdminUserActivityResponseDTO> getAdminUserActivity(@PathVariable UUID id) {
+        return ApiResponse.<AdminUserActivityResponseDTO>builder()
+                .result(adminUserService.getUserActivity(id))
                 .build();
     }
 }

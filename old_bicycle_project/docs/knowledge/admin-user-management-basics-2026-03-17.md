@@ -2,39 +2,58 @@
 
 ## Bối cảnh
 
-Trong SRS, phần `FR-ADM-001` yêu cầu admin phải có thể quản lý tài khoản người dùng. Ở mức tối thiểu, admin cần xem danh sách user, lọc user, xem chi tiết và khóa hoặc mở lại tài khoản.
-
-Ở tranche này, backend đã bổ sung 3 API:
+Trong SRS, mục `FR-ADM-001` yêu cầu admin phải quản lý được tài khoản người dùng. Sau tranche 2, backend đã có đủ các API cốt lõi của luồng này:
 
 - `GET /api/admin/users`
 - `GET /api/admin/users/{id}`
 - `PATCH /api/admin/users/{id}/status`
+- `PATCH /api/admin/users/{id}/password`
+- `GET /api/admin/users/{id}/activity`
+
+Nói đơn giản, admin giờ có thể:
+
+- xem danh sách user và lọc theo điều kiện
+- xem chi tiết một user
+- khóa hoặc mở lại tài khoản
+- đặt lại mật khẩu cho user
+- xem tóm tắt hoạt động gần đây của user đó
 
 ## Khái niệm chính
 
 ### Admin user management là gì?
 
-Đây là luồng cho phép người có quyền `admin` quản lý tài khoản của các user khác trong hệ thống.
+Đây là nhóm chức năng cho phép người có quyền `ADMIN` quản lý tài khoản của các user khác trong hệ thống.
 
 Ví dụ:
 
-- xem user nào là buyer, seller, inspector
-- lọc user đang `banned`
-- mở lại tài khoản bị khóa
+- kiểm tra seller nào đang bị `banned`
+- xem buyer đã tạo bao nhiêu order
+- đặt lại mật khẩu cho một user khi cần hỗ trợ
 
-### Filter là gì?
+### User activity là gì?
 
-`Filter` là điều kiện lọc dữ liệu trước khi trả về kết quả.
+`User activity` là phần tổng hợp một số dấu vết hoạt động gần đây của user.
 
-Ví dụ:
+Trong dự án này, activity hiện gồm:
 
-- chỉ lấy user có `role = seller`
-- chỉ lấy user có `status = banned`
-- chỉ lấy user đã `verified = true`
+- số lượng sản phẩm đã đăng
+- số order với vai trò buyer
+- số order với vai trò seller
+- số report đã gửi
+- số wishlist item
+- số conversation chat
+- số notification chưa đọc
+- danh sách gần đây của product, order, report, notification, wishlist
+
+Đây là cách để admin nhìn nhanh “user này đang hoạt động như thế nào” mà không phải tự query từng bảng một.
 
 ## Vì sao tính năng này quan trọng?
 
-Nếu không có API admin quản lý user, hệ thống marketplace sẽ khó vận hành thật. Khi có user vi phạm, admin phải có đường backend rõ ràng để kiểm tra và xử lý tài khoản đó.
+Nếu chỉ có danh sách user thì admin mới nhìn được mặt ngoài của tài khoản. Nhưng khi có thêm reset password và activity view, admin mới thật sự có công cụ vận hành:
+
+- hỗ trợ user bị kẹt đăng nhập
+- kiểm tra user có hoạt động bất thường hay không
+- xử lý report nhanh hơn vì đã thấy bối cảnh của user
 
 ## Luồng chính trong dự án
 
@@ -44,17 +63,27 @@ sequenceDiagram
     participant Security as Spring Security
     participant Controller as AdminUserController
     participant Service as AdminUserServiceImpl
-    participant Repository as UserRepository
+    participant Repo as Repositories
     participant DB as PostgreSQL
 
     Client->>Security: Request /api/admin/users/**
-    Security->>Controller: Cho đi tiếp nếu role = ADMIN
+    Security->>Controller: Chỉ cho qua nếu role = ADMIN
     Controller->>Service: Gọi service tương ứng
-    Service->>Repository: Query user / update status
-    Repository->>DB: SELECT hoặc UPDATE users
-    DB-->>Repository: Kết quả dữ liệu
-    Repository-->>Service: User / Page<User>
-    Service-->>Controller: AdminUserResponseDTO
+    alt Reset password
+        Service->>Service: Validate password policy
+        Service->>Repo: Tìm user + lưu password hash mới
+        Service->>Repo: Xóa refresh token cũ
+        Repo->>DB: UPDATE users, DELETE refresh_tokens
+        DB-->>Repo: OK
+        Repo-->>Service: Kết quả
+        Service-->>Controller: Message thành công
+    else View activity
+        Service->>Repo: Đọc user + các bảng liên quan
+        Repo->>DB: SELECT users/products/orders/reports/...
+        DB-->>Repo: Dữ liệu tổng hợp
+        Repo-->>Service: Các bản ghi cần thiết
+        Service-->>Controller: AdminUserActivityResponseDTO
+    end
     Controller-->>Client: ApiResponse
 ```
 
@@ -64,15 +93,15 @@ sequenceDiagram
 
 Admin có thể gửi:
 
-- `GET /api/admin/users?keyword=buyer&status=active`
-- `GET /api/admin/users/{id}`
-- `PATCH /api/admin/users/{id}/status` với body chứa `status`
+- `GET /api/admin/users?keyword=lan&status=active`
+- `PATCH /api/admin/users/{id}/password`
+- `GET /api/admin/users/{id}/activity`
 
-Ví dụ body:
+Ví dụ body đặt lại mật khẩu:
 
 ```json
 {
-  "status": "banned"
+  "newPassword": "NewStrong1"
 }
 ```
 
@@ -82,7 +111,9 @@ File chính:
 
 - [AdminUserController.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/controller/AdminUserController.java)
 
-Controller nhận request rồi chuyển tiếp sang service. Controller cố ý giữ mỏng, không nhét business rule vào đây.
+Controller chỉ nhận request, kiểm tra annotation như `@PreAuthorize("hasRole('ADMIN')")`, rồi chuyển tiếp sang service.
+
+Điểm quan trọng là controller không tự xử lý business rule phức tạp. Nó chỉ đóng vai trò “cửa vào” của API.
 
 ### 3. Service quyết định gì?
 
@@ -90,123 +121,130 @@ File chính:
 
 - [AdminUserServiceImpl.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/impl/AdminUserServiceImpl.java)
 
-Service xử lý các quyết định nghiệp vụ như:
+Service xử lý phần quyết định nghiệp vụ:
 
-- tạo `PageRequest` để phân trang
-- áp dụng filter keyword, role, status, verified
-- ném lỗi nếu user không tồn tại
-- chặn admin tự đổi trạng thái tài khoản của chính mình
-
-Đây là điểm rất quan trọng. Nếu không chặn, admin có thể tự `banned` chính mình và bị khóa khỏi hệ thống.
+- chặn admin tự đổi status của chính mình
+- kiểm tra password mới có đúng policy hay không
+- mã hóa mật khẩu mới trước khi lưu
+- thu hồi tất cả refresh token cũ sau khi reset password
+- gom dữ liệu từ nhiều bảng để tạo ra `AdminUserActivityResponseDTO`
 
 ### 4. Repository đọc/ghi gì?
 
-File chính:
+Các repository chính được dùng:
 
 - [UserRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/UserRepository.java)
-- [UserSpecification.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/specification/UserSpecification.java)
+- [ProductRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/ProductRepository.java)
+- [OrderRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/OrderRepository.java)
+- [ReportRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/ReportRepository.java)
+- [NotificationRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/NotificationRepository.java)
+- [WishlistRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/WishlistRepository.java)
+- [ConversationRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/ConversationRepository.java)
 
-`UserRepository` đã được mở rộng với `JpaSpecificationExecutor<User>` để backend có thể lọc dữ liệu linh hoạt.
+Các repository này giúp service:
 
-`UserSpecification` là nơi ghép các điều kiện filter:
-
-- keyword
-- role
-- status
-- verified
+- đếm số bản ghi
+- lấy danh sách gần đây
+- cập nhật user
+- xóa refresh token cũ
 
 ### 5. Database thay đổi gì?
 
-Khi gọi:
+Với `PATCH /api/admin/users/{id}/password`:
 
-- `GET /api/admin/users`
-- `GET /api/admin/users/{id}`
+- cột `password_hash` của bảng `users` được cập nhật
+- các dòng refresh token cũ của user đó bị xóa
 
-thì database chỉ bị đọc.
+Với `GET /api/admin/users/{id}/activity`:
 
-Khi gọi:
-
-- `PATCH /api/admin/users/{id}/status`
-
-thì cột `status` trong bảng `users` sẽ được cập nhật thành:
-
-- `active`
-- `unactive`
-- hoặc `banned`
+- database không bị ghi
+- backend chỉ đọc dữ liệu từ nhiều bảng để trả summary
 
 ## Ví dụ nhỏ
 
-### Trước khi update
+### Ví dụ 1: Reset password
+
+Trước khi reset:
 
 ```text
-user.status = active
+users.password_hash = old_hash
+refresh_tokens = 3 token còn hiệu lực
 ```
 
-### Admin gọi API khóa tài khoản
+Admin gọi API:
 
 ```json
 {
-  "status": "banned"
+  "newPassword": "NewStrong1"
 }
 ```
 
-### Sau khi update
+Sau khi xử lý:
 
 ```text
-user.status = banned
+users.password_hash = hash mới
+refresh_tokens = 0 token cũ
 ```
 
-Vì entity `User` đang implement `UserDetails`, user bị `banned` sẽ không còn đăng nhập bình thường được.
+Điều này giúp user phải đăng nhập lại bằng mật khẩu mới, và các phiên cũ không còn tiếp tục dùng được.
 
-## Những chỗ mới trong dự án
+### Ví dụ 2: Activity view
+
+Giả sử một seller có:
+
+- 4 sản phẩm
+- 2 order đã bán
+- 1 report đã gửi
+- 3 notification chưa đọc
+
+Khi admin gọi `GET /api/admin/users/{id}/activity`, backend sẽ trả về một DTO tổng hợp để FE hiển thị trong một màn hình thay vì phải gọi 5-6 API rời rạc.
+
+## Những file mới hoặc đã mở rộng trong tranche này
 
 - [AdminUserController.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/controller/AdminUserController.java)
 - [AdminUserService.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/AdminUserService.java)
 - [AdminUserServiceImpl.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/impl/AdminUserServiceImpl.java)
-- [AdminUserStatusUpdateRequest.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/dto/request/AdminUserStatusUpdateRequest.java)
-- [AdminUserResponseDTO.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/dto/response/AdminUserResponseDTO.java)
-- [UserSpecification.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/specification/UserSpecification.java)
+- [AdminUserPasswordResetRequest.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/dto/request/AdminUserPasswordResetRequest.java)
+- [AdminUserActivityResponseDTO.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/dto/response/AdminUserActivityResponseDTO.java)
+- [PasswordPolicyValidator.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/PasswordPolicyValidator.java)
+- [OrderRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/OrderRepository.java)
+- [ReportRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/ReportRepository.java)
+- [WishlistRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/WishlistRepository.java)
+- [ConversationRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/ConversationRepository.java)
 
 ## Những hiểu lầm dễ gặp
 
-### Hiểu lầm 1: Có `UserRepository` là coi như đã có user management
+### Hiểu lầm 1: Reset password chỉ cần đổi string mật khẩu
 
 Không đúng.
 
-`Repository` chỉ là tầng đọc/ghi dữ liệu. Muốn tính năng hoàn chỉnh, vẫn cần:
+Backend không được lưu plain text password. Mật khẩu mới phải được:
 
-- controller
-- service
-- security
-- DTO
-- test
+- kiểm tra policy
+- mã hóa bằng `PasswordEncoder`
+- rồi mới lưu vào database
 
-### Hiểu lầm 2: Admin có quyền thì muốn đổi trạng thái ai cũng được, kể cả chính mình
+### Hiểu lầm 2: Đổi mật khẩu xong là đủ
 
-Không nên.
+Chưa đủ.
 
-Trong tranche này, backend chủ động chặn admin tự đổi trạng thái tài khoản của chính mình để tránh tự khóa quyền truy cập.
+Nếu không xóa refresh token cũ, các phiên đăng nhập cũ vẫn có thể tiếp tục dùng. Vì vậy reset password trong dự án này còn đi kèm bước thu hồi session cũ.
 
-### Hiểu lầm 3: Làm xong list user là coi như xong FR-ADM-001
+### Hiểu lầm 3: User activity là log chi tiết 100%
 
-Chưa đúng.
+Không phải.
 
-Hiện mới xong phần:
-
-- view/search/filter
-- detail
-- ban/unban qua status update
-
-Vẫn còn phần:
-
-- reset password
-- view user activity
+`User activity` ở đây là summary phục vụ admin vận hành nhanh. Nó không phải hệ thống audit log đầy đủ từng thao tác nhỏ.
 
 ## Kết luận
 
-Tranche này giúp phần admin user management đi từ trạng thái gần như chưa có API sang trạng thái đã dùng được cho quản trị cơ bản. Nó chưa hoàn tất toàn bộ `FR-ADM-001`, nhưng đã tạo ra đường backend rõ ràng cho:
+Sau tranche 2, `FR-ADM-001` đã có bộ API admin đủ dùng cho backend MVP:
 
-- xem user
+- xem danh sách user
 - lọc user
-- xem chi tiết user
-- đổi trạng thái tài khoản một cách an toàn hơn
+- xem chi tiết
+- khóa hoặc mở lại tài khoản
+- đặt lại mật khẩu
+- xem tổng hợp hoạt động gần đây
+
+Phần này giúp admin UI của FE có nền API rõ ràng hơn để xây màn hình quản trị user, thay vì phải ghép nhiều API nhỏ hoặc query thủ công từ database.

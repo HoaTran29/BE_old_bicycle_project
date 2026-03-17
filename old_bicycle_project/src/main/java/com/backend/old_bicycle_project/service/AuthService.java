@@ -28,13 +28,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
-
-    private static final Pattern PASSWORD_POLICY = Pattern.compile("^(?=.*[A-Z])(?=.*\\d).{8,}$");
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -42,6 +39,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final RefreshTokenService refreshTokenService;
     private final EmailService emailService;
+    private final PasswordPolicyValidator passwordPolicyValidator;
 
     @Value("${jwt.access-token-expiration}")
     private long accessTokenExpiration;
@@ -52,7 +50,7 @@ public class AuthService {
             throw new AppException(ErrorCode.USER_EXISTED);
         }
 
-        validatePasswordPolicy(request.getPassword());
+        passwordPolicyValidator.validate(request.getPassword());
 
         AppRole role = request.getRole();
         if (role == null || (role != AppRole.buyer && role != AppRole.seller)) {
@@ -119,7 +117,7 @@ public class AuthService {
 
     @Transactional
     public String resetPassword(ResetPasswordRequest request) {
-        validatePasswordPolicy(request.getNewPassword());
+        passwordPolicyValidator.validate(request.getNewPassword());
 
         PasswordResetToken passwordResetToken = emailService.findPasswordResetToken(request.getToken())
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_RESET_TOKEN));
@@ -201,7 +199,7 @@ public class AuthService {
             throw new AppException(ErrorCode.CURRENT_PASSWORD_INVALID);
         }
 
-        validatePasswordPolicy(request.getNewPassword());
+        passwordPolicyValidator.validate(request.getNewPassword());
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
         refreshTokenService.deleteAllByUser(user);
@@ -237,12 +235,6 @@ public class AuthService {
     private User loadUser(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
-    }
-
-    private void validatePasswordPolicy(String password) {
-        if (password == null || !PASSWORD_POLICY.matcher(password).matches()) {
-            throw new AppException(ErrorCode.INVALID_PASSWORD);
-        }
     }
 
     private void ensureUserVerified(User user) {

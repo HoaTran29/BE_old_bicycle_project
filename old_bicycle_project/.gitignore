@@ -73,3 +73,5 @@ build/
 .codex
 .agents
 .env
+.env.local
+smoke*

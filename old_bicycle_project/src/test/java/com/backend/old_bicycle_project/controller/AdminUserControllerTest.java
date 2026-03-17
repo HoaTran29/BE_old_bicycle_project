@@ -1,6 +1,8 @@
 package com.backend.old_bicycle_project.controller;
 
+import com.backend.old_bicycle_project.dto.request.AdminUserPasswordResetRequest;
 import com.backend.old_bicycle_project.dto.request.AdminUserStatusUpdateRequest;
+import com.backend.old_bicycle_project.dto.response.AdminUserActivityResponseDTO;
 import com.backend.old_bicycle_project.dto.response.AdminUserResponseDTO;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.entity.User;
@@ -71,5 +73,34 @@ class AdminUserControllerTest {
 
         assertThat(response.getResult()).isSameAs(updatedUser);
         verify(adminUserService).updateUserStatus(userId, UserStatus.banned, adminId);
+    }
+
+    @Test
+    void resetAdminUserPasswordDelegatesAndWrapsMessage() {
+        UUID userId = UUID.randomUUID();
+        AdminUserPasswordResetRequest request = new AdminUserPasswordResetRequest();
+        request.setNewPassword("StrongPass2");
+        when(adminUserService.resetUserPassword(userId, "StrongPass2"))
+                .thenReturn("Admin da dat lai mat khau");
+
+        ApiResponse<String> response = adminUserController.resetAdminUserPassword(userId, request);
+
+        assertThat(response.getResult()).isEqualTo("Admin da dat lai mat khau");
+        verify(adminUserService).resetUserPassword(userId, "StrongPass2");
+    }
+
+    @Test
+    void getAdminUserActivityDelegatesAndWrapsResponse() {
+        UUID userId = UUID.randomUUID();
+        AdminUserActivityResponseDTO activity = AdminUserActivityResponseDTO.builder()
+                .userId(userId)
+                .totalProducts(3)
+                .build();
+        when(adminUserService.getUserActivity(userId)).thenReturn(activity);
+
+        ApiResponse<AdminUserActivityResponseDTO> response = adminUserController.getAdminUserActivity(userId);
+
+        assertThat(response.getResult()).isSameAs(activity);
+        verify(adminUserService).getUserActivity(userId);
     }
 }
