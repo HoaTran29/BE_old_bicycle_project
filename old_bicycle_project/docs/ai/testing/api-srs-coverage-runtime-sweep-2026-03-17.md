@@ -174,11 +174,19 @@ Fix:
 - Logistics integration
 - Video upload / video filter / video playback APIs
 
+## Follow-up Applied After Initial Audit
+
+### 2026-03-17 - Auth verification guard
+
+- Login now rejects users whose `isVerified` flag is still `false`.
+- Refresh-token reuse also rejects unverified accounts, so old sessions from pre-guard behavior cannot continue silently.
+- Covered by focused auth regression tests in `AuthServiceTest`.
+
 ## Priority Backlog From This Audit
 
 ### P0 - nên làm sớm nhất
 
-- Bắt login phải tôn trọng `isVerified`
+- [Done 2026-03-17] Bắt login phải tôn trọng `isVerified`
 - Hoàn thiện admin user management
 - Siết rõ moderation flow cho listing mới tạo
 - Tăng integration coverage cho realtime chat và payment webhook duplicate/edge cases

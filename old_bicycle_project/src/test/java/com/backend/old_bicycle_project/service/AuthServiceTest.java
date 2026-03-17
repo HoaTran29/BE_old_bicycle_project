@@ -23,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
@@ -33,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -187,6 +189,46 @@ class AuthServiceTest {
                 }}))
                 .isInstanceOfSatisfying(AppException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED));
+
+        verify(refreshTokenService).deleteAllByUser(user);
+    }
+
+    @Test
+    void loginRejectsUnverifiedUserAndRevokesExistingSessions() {
+        User user = user("buyer@test.dev");
+        user.setVerified(false);
+
+        Authentication authentication = mock(Authentication.class);
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(authentication.getPrincipal()).thenReturn(user);
+
+        assertThatThrownBy(() -> authService.login(new com.backend.old_bicycle_project.dto.auth.LoginRequest() {{
+                    setEmail("buyer@test.dev");
+                    setPassword("Password1");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.EMAIL_NOT_VERIFIED));
+
+        verify(refreshTokenService).deleteAllByUser(user);
+    }
+
+    @Test
+    void refreshTokenRejectsUnverifiedUserAndRevokesSessions() {
+        User user = user("buyer@test.dev");
+        user.setVerified(false);
+        RefreshToken refreshToken = RefreshToken.builder()
+                .user(user)
+                .token("refresh-token")
+                .expiresAt(LocalDateTime.now().plusDays(1))
+                .build();
+
+        when(refreshTokenService.findByToken("refresh-token")).thenReturn(Optional.of(refreshToken));
+
+        assertThatThrownBy(() -> authService.refreshToken(new com.backend.old_bicycle_project.dto.auth.RefreshTokenRequest() {{
+                    setRefreshToken("refresh-token");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.EMAIL_NOT_VERIFIED));
 
         verify(refreshTokenService).deleteAllByUser(user);
     }

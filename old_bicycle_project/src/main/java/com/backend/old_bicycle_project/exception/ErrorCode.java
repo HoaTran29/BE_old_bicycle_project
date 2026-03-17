@@ -28,7 +28,8 @@ public enum ErrorCode {
     PRODUCT_TECHNICAL_FIELDS_REQUIRED(1020, "Frame size and wheel size are required", HttpStatus.BAD_REQUEST),
     PRODUCT_MINIMUM_IMAGES_REQUIRED(1021, "At least 3 product images are required", HttpStatus.BAD_REQUEST),
     PAYMENT_GATEWAY_ERROR(1022, "Payment gateway request failed", HttpStatus.BAD_GATEWAY),
-    INVALID_REQUEST_BODY(1023, "Request body khong hop le", HttpStatus.BAD_REQUEST);
+    INVALID_REQUEST_BODY(1023, "Request body khong hop le", HttpStatus.BAD_REQUEST),
+    EMAIL_NOT_VERIFIED(1024, "Please verify your email before logging in", HttpStatus.FORBIDDEN);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

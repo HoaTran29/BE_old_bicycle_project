@@ -84,6 +84,7 @@ public class AuthService {
         );
 
         User user = (User) authentication.getPrincipal();
+        ensureUserVerified(user);
         String accessToken = jwtTokenProvider.generateAccessToken(user);
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
 
@@ -100,6 +101,7 @@ public class AuthService {
         }
 
         User user = refreshToken.getUser();
+        ensureUserVerified(user);
         String newAccessToken = jwtTokenProvider.generateAccessToken(user);
 
         return buildAuthResponse(user, newAccessToken, refreshToken.getToken());
@@ -240,6 +242,13 @@ public class AuthService {
     private void validatePasswordPolicy(String password) {
         if (password == null || !PASSWORD_POLICY.matcher(password).matches()) {
             throw new AppException(ErrorCode.INVALID_PASSWORD);
+        }
+    }
+
+    private void ensureUserVerified(User user) {
+        if (!user.isVerified()) {
+            refreshTokenService.deleteAllByUser(user);
+            throw new AppException(ErrorCode.EMAIL_NOT_VERIFIED);
         }
     }
 
