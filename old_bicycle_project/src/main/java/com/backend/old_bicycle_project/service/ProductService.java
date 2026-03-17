@@ -192,6 +192,29 @@ public class ProductService {
         productRepository.save(product);
     }
 
+    @Transactional
+    public ProductResponse hide(UUID id, User currentUser) {
+        Product product = findActiveProductById(id);
+        validateSellerCanModify(product, currentUser);
+
+        product.setStatus(ProductStatus.hidden);
+        return toResponse(productRepository.save(product));
+    }
+
+    @Transactional
+    public ProductResponse show(UUID id, User currentUser) {
+        Product product = findActiveProductById(id);
+        validateSellerCanModify(product, currentUser);
+
+        if (product.getStatus() != ProductStatus.hidden) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+
+        product.setStatus(ProductStatus.pending);
+        product.setExpiresAt(LocalDateTime.now().plusDays(30));
+        return toResponse(productRepository.save(product));
+    }
+
     public Page<ProductResponse> getMyProducts(User currentUser, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         return productRepository.findBySellerIdAndDeletedAtIsNull(currentUser.getId(), pageable)
@@ -199,11 +222,13 @@ public class ProductService {
     }
 
     public Page<ProductResponse> getAllForAdmin(ProductStatus status, int page, int size) {
+        return getAllForAdmin(status, null, null, page, size);
+    }
+
+    public Page<ProductResponse> getAllForAdmin(ProductStatus status, UUID sellerId, String keyword, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        if (status != null) {
-            return productRepository.findByStatusAndDeletedAtIsNull(status, pageable).map(this::toResponse);
-        }
-        return productRepository.findAllByDeletedAtIsNull(pageable).map(this::toResponse);
+        Specification<Product> specification = ProductSpecification.fromAdminFilter(status, sellerId, keyword);
+        return productRepository.findAll(specification, pageable).map(this::toResponse);
     }
 
     @Transactional
@@ -211,7 +236,15 @@ public class ProductService {
         if (!ADMIN_MODERATED_STATUSES.contains(newStatus)) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
+
         Product product = findActiveProductById(id);
+        if (product.getStatus() == ProductStatus.sold
+                || product.getStatus() == ProductStatus.pending_inspection
+                || product.getStatus() == ProductStatus.inspected_passed
+                || product.getStatus() == ProductStatus.inspected_failed) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+
         product.setStatus(newStatus);
         return toResponse(productRepository.save(product));
     }

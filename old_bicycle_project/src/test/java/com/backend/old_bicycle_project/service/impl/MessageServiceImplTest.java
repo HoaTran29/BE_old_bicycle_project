@@ -61,6 +61,20 @@ class MessageServiceImplTest {
     }
 
     @Test
+    void markMessagesAsReadRejectsUserOutsideConversation() {
+        UUID conversationId = UUID.randomUUID();
+        UUID outsiderId = UUID.randomUUID();
+        Conversation conversation = conversation(UUID.randomUUID(), UUID.randomUUID());
+        conversation.setId(conversationId);
+
+        when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+
+        assertThatThrownBy(() -> messageService.markMessagesAsRead(conversationId, outsiderId))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> org.assertj.core.api.Assertions.assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+    }
+
+    @Test
     void getMessagesByConversationRejectsUserOutsideConversation() {
         UUID conversationId = UUID.randomUUID();
         UUID outsiderId = UUID.randomUUID();

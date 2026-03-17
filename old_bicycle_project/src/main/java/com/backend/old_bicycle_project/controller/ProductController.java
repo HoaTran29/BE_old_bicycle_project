@@ -16,6 +16,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -60,9 +61,8 @@ public class ProductController {
             @RequestPart(value = "images", required = false) List<MultipartFile> images,
             @AuthenticationPrincipal User currentUser
     ) {
-        ProductResponse response = productService.create(request, images, currentUser);
         return ApiResponse.<ProductResponse>builder()
-                .result(response)
+                .result(productService.create(request, images, currentUser))
                 .build();
     }
 
@@ -100,6 +100,28 @@ public class ProductController {
     ) {
         return ApiResponse.<Page<ProductResponse>>builder()
                 .result(productService.getMyProducts(currentUser, page, size))
+                .build();
+    }
+
+    @PatchMapping("/{id}/hide")
+    @PreAuthorize("hasRole('SELLER')")
+    public ApiResponse<ProductResponse> hideProduct(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        return ApiResponse.<ProductResponse>builder()
+                .result(productService.hide(id, currentUser))
+                .build();
+    }
+
+    @PatchMapping("/{id}/show")
+    @PreAuthorize("hasRole('SELLER')")
+    public ApiResponse<ProductResponse> showProduct(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        return ApiResponse.<ProductResponse>builder()
+                .result(productService.show(id, currentUser))
                 .build();
     }
 }

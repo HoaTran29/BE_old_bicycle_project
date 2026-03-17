@@ -65,8 +65,66 @@ class WebSocketAuthChannelInterceptorTest {
     }
 
     @Test
+    void connectWithLowercaseAuthorizationHeaderIsAccepted() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("seller@test.dev")
+                .build();
+
+        when(jwtTokenProvider.validateToken("lower-token")).thenReturn(true);
+        when(jwtTokenProvider.extractEmail("lower-token")).thenReturn(user.getEmail());
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        accessor.setLeaveMutable(true);
+        accessor.setNativeHeader("authorization", "Bearer lower-token");
+        Message<?> message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+
+        Message<?> intercepted = interceptor.preSend(message, mock(MessageChannel.class));
+        StompHeaderAccessor interceptedAccessor = StompHeaderAccessor.wrap(intercepted);
+
+        assertThat(interceptedAccessor.getUser()).isNotNull();
+        assertThat(interceptedAccessor.getUser().getName()).isEqualTo(userId.toString());
+    }
+
+    @Test
+    void connectWithInvalidTokenIsRejected() {
+        when(jwtTokenProvider.validateToken("bad-token")).thenReturn(false);
+
+        Message<?> message = buildConnectMessage("Bearer bad-token");
+
+        assertThatThrownBy(() -> interceptor.preSend(message, mock(MessageChannel.class)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Invalid WebSocket bearer token");
+    }
+
+    @Test
+    void connectWithUnknownUserIsRejected() {
+        when(jwtTokenProvider.validateToken("valid-token")).thenReturn(true);
+        when(jwtTokenProvider.extractEmail("valid-token")).thenReturn("ghost@test.dev");
+        when(userRepository.findByEmail("ghost@test.dev")).thenReturn(Optional.empty());
+
+        Message<?> message = buildConnectMessage("Bearer valid-token");
+
+        assertThatThrownBy(() -> interceptor.preSend(message, mock(MessageChannel.class)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("User not found");
+    }
+
+    @Test
     void sendFrameWithoutAuthenticatedUserIsRejected() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+        Message<?> message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+
+        assertThatThrownBy(() -> interceptor.preSend(message, mock(MessageChannel.class)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Unauthenticated WebSocket session");
+    }
+
+    @Test
+    void subscribeFrameWithoutAuthenticatedUserIsRejected() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         Message<?> message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
 
         assertThatThrownBy(() -> interceptor.preSend(message, mock(MessageChannel.class)))

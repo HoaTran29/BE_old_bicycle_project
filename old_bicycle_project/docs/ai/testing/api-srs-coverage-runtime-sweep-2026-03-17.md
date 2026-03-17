@@ -192,6 +192,49 @@ Fix:
 - Added a guard so admins cannot change their own account status and accidentally lock themselves out.
 - Covered by focused service, controller, and security regression tests.
 
+### 2026-03-17 - Moderation, seller visibility, and reference-data breadth
+
+- Added seller self-service:
+  - `PATCH /api/products/{id}/hide`
+  - `PATCH /api/products/{id}/show`
+- Added deeper admin moderation:
+  - `GET /api/admin/products` with `status`, `sellerId`, `keyword`
+  - `PATCH /api/admin/products/{id}/approve`
+  - `PATCH /api/admin/products/{id}/hide`
+- Added admin CRUD for:
+  - brands
+  - categories
+  - brake types
+  - frame materials
+- Added delete/in-use and category-hierarchy guard rails for master data.
+
+### 2026-03-17 - Realtime chat and payment webhook edge regression
+
+- WebSocket auth regression now covers:
+  - lowercase `authorization`
+  - invalid token
+  - unknown user
+  - unauthenticated `SUBSCRIBE`
+- Chat message routing regression now checks recipient queue behavior.
+- Payment webhook-only regression now covers:
+  - malformed JSON
+  - missing `code`
+  - snake_case payload variants
+
+### 2026-03-17 - Status refresh
+
+Items that are no longer open from the original backlog:
+
+- seller hide/show listing endpoint
+- category update/delete admin endpoint
+- much deeper admin product moderation flow
+
+Items still open:
+
+- seller reply review endpoint
+- groupset / size chart management API
+- deeper live integration coverage for WebSocket reconnect and payment delivery state
+
 ## Priority Backlog From This Audit
 
 ### P0 - nên làm sớm nhất

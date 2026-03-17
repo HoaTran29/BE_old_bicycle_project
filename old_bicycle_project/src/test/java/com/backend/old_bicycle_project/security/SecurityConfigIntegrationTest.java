@@ -53,9 +53,22 @@ class SecurityConfigIntegrationTest {
     }
 
     @Test
+    void anonymousUserCannotHideSellerProduct() throws Exception {
+        mockMvc.perform(patch("/api/products/11111111-1111-1111-1111-111111111111/hide"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @WithMockUser(roles = "BUYER")
     void nonAdminUserCannotAccessAdminUsers() throws Exception {
         mockMvc.perform(get("/api/admin/users"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "BUYER")
+    void nonAdminUserCannotAccessAdminProducts() throws Exception {
+        mockMvc.perform(get("/api/admin/products"))
                 .andExpect(status().isForbidden());
     }
 

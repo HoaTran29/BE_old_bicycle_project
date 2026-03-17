@@ -8,4 +8,6 @@ import java.util.UUID;
 
 @Repository
 public interface FrameMaterialRepository extends JpaRepository<FrameMaterial, UUID> {
+    boolean existsByNameIgnoreCase(String name);
+    boolean existsByNameIgnoreCaseAndIdNot(String name, UUID id);
 }

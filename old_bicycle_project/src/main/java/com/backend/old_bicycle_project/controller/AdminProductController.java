@@ -27,11 +27,13 @@ public class AdminProductController {
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Page<ProductResponse>> getAdminProducts(
             @RequestParam(required = false) ProductStatus status,
+            @RequestParam(required = false) UUID sellerId,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "12") int size
     ) {
         return ApiResponse.<Page<ProductResponse>>builder()
-                .result(productService.getAllForAdmin(status, page, size))
+                .result(productService.getAllForAdmin(status, sellerId, keyword, page, size))
                 .build();
     }
 
@@ -43,6 +45,22 @@ public class AdminProductController {
     ) {
         return ApiResponse.<ProductResponse>builder()
                 .result(productService.changeStatus(id, status))
+                .build();
+    }
+
+    @PatchMapping("/{id}/approve")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<ProductResponse> approveAdminProduct(@PathVariable UUID id) {
+        return ApiResponse.<ProductResponse>builder()
+                .result(productService.changeStatus(id, ProductStatus.active))
+                .build();
+    }
+
+    @PatchMapping("/{id}/hide")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<ProductResponse> hideAdminProduct(@PathVariable UUID id) {
+        return ApiResponse.<ProductResponse>builder()
+                .result(productService.changeStatus(id, ProductStatus.hidden))
                 .build();
     }
 }

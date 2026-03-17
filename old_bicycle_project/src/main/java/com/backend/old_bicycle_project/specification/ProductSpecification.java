@@ -12,6 +12,7 @@ import org.springframework.data.jpa.domain.Specification;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class ProductSpecification {
 
@@ -105,5 +106,31 @@ public class ProductSpecification {
 
     public static Specification<Product> withStatus(ProductStatus status) {
         return (root, query, cb) -> cb.equal(root.get("status"), status);
+    }
+
+    public static Specification<Product> fromAdminFilter(ProductStatus status, UUID sellerId, String keyword) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isNull(root.get("deletedAt")));
+
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (sellerId != null) {
+                predicates.add(cb.equal(root.get("seller").get("id"), sellerId));
+            }
+            if (keyword != null && !keyword.isBlank()) {
+                String normalizedKeyword = "%" + keyword.toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("description")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("email")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("firstName")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("lastName")), normalizedKeyword)
+                ));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
     }
 }

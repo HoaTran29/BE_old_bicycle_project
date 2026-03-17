@@ -73,6 +73,39 @@ class ChatControllerTest {
     }
 
     @Test
+    void sendMessageRoutesSellerMessagesToBuyerQueue() {
+        UUID conversationId = UUID.randomUUID();
+        UUID buyerId = UUID.randomUUID();
+        UUID sellerId = UUID.randomUUID();
+
+        MessageRequestDTO request = MessageRequestDTO.builder()
+                .conversationId(conversationId)
+                .content("Minh vua cap nhat gia")
+                .build();
+        MessageResponseDTO savedMessage = MessageResponseDTO.builder()
+                .id(UUID.randomUUID())
+                .conversationId(conversationId)
+                .senderId(sellerId)
+                .senderName("Seller")
+                .content("Minh vua cap nhat gia")
+                .isRead(false)
+                .build();
+        ConversationResponseDTO conversation = ConversationResponseDTO.builder()
+                .id(conversationId)
+                .buyerId(buyerId)
+                .sellerId(sellerId)
+                .build();
+
+        when(messageService.sendMessage(request, sellerId)).thenReturn(savedMessage);
+        when(conversationService.getConversationById(conversationId)).thenReturn(conversation);
+
+        chatController.sendMessage(request, uuidPrincipal(sellerId));
+
+        verify(messagingTemplate).convertAndSend("/topic/conversation/" + conversationId, savedMessage);
+        verify(messagingTemplate).convertAndSendToUser(buyerId.toString(), "/queue/messages", savedMessage);
+    }
+
+    @Test
     void sendMessageRejectsMissingPrincipal() {
         MessageRequestDTO request = MessageRequestDTO.builder()
                 .conversationId(UUID.randomUUID())

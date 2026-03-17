@@ -24,6 +24,14 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
     Optional<Product> findByIdAndDeletedAtIsNull(UUID id);
 
+    boolean existsByBrandIdAndDeletedAtIsNull(UUID brandId);
+
+    boolean existsByCategoryIdAndDeletedAtIsNull(UUID categoryId);
+
+    boolean existsByBrakeTypeIdAndDeletedAtIsNull(UUID brakeTypeId);
+
+    boolean existsByFrameMaterialIdAndDeletedAtIsNull(UUID frameMaterialId);
+
     @Query("SELECT COUNT(p) FROM Product p WHERE p.seller.id = :sellerId")
     long countBySellerId(@Param("sellerId") UUID sellerId);
 

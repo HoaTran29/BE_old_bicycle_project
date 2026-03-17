@@ -342,6 +342,31 @@ class PaymentServiceImplTest {
     }
 
     @Test
+    void handleSepayWebhookRejectsMalformedJson() {
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        assertThatThrownBy(() -> paymentService.handleSepayWebhook("not-json", "Apikey secret-key"))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_VALIDATION_FAILED));
+    }
+
+    @Test
+    void handleSepayWebhookRejectsPayloadMissingCode() {
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        assertThatThrownBy(() -> paymentService.handleSepayWebhook("""
+                        {
+                          "transferType": "in",
+                          "transferAmount": 2000000
+                        }
+                        """, "Apikey secret-key"))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_VALIDATION_FAILED));
+    }
+
+    @Test
     void handleSepayWebhookRejectsInsufficientTransferAmount() {
         User buyer = user(AppRole.buyer, "buyer@test.dev");
         Order order = acceptedOrder(buyer);
@@ -383,6 +408,33 @@ class PaymentServiceImplTest {
         verify(paymentRepository, never()).findByGatewayOrderCode(any());
         verify(paymentRepository, never()).save(any(Payment.class));
         verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void handleSepayWebhookParsesSnakeCasePayloadAndFallsBackToIdAsReference() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        Payment payment = processingPayment(order, "OB-ORDER-007");
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        when(paymentRepository.findByGatewayOrderCode("OB-ORDER-007")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        paymentService.handleSepayWebhook("""
+                {
+                  "id": 9988,
+                  "code": "OB-ORDER-007",
+                  "transfer_type": "in",
+                  "transfer_amount": "2000000",
+                  "transaction_date": "2026-03-12 11:00:00"
+                }
+                """, "Apikey secret-key");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.success);
+        assertThat(payment.getTransactionReference()).isEqualTo("9988");
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.deposited);
     }
 
     @Test

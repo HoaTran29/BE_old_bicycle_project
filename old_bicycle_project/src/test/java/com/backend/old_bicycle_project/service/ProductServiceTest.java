@@ -148,6 +148,55 @@ class ProductServiceTest {
     }
 
     @Test
+    void hideMovesOwnedProductToHiddenWithoutSoftDeleting() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.hide(product.getId(), seller);
+
+        assertThat(response.getStatus()).isEqualTo(ProductStatus.hidden);
+        assertThat(product.getDeletedAt()).isNull();
+        verify(productRepository).save(product);
+    }
+
+    @Test
+    void showMovesHiddenProductBackToPendingAndRenewsExpiry() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.hidden);
+        LocalDateTime previousExpiry = LocalDateTime.now().minusDays(1);
+        product.setExpiresAt(previousExpiry);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.show(product.getId(), seller);
+
+        assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
+        assertThat(product.getExpiresAt()).isAfter(previousExpiry);
+        verify(productRepository).save(product);
+    }
+
+    @Test
+    void showRejectsProductThatIsNotHidden() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> productService.show(product.getId(), seller))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATUS);
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
     void deleteSoftDeletesProductInsteadOfHardDeleting() {
         User seller = seller();
         Product product = product(seller, ProductStatus.active);
@@ -233,6 +282,21 @@ class ProductServiceTest {
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
         assertThat(inspection.getPassed()).isFalse();
         assertThat(inspection.getValidUntil()).isNotNull();
+    }
+
+    @Test
+    void changeStatusRejectsProductsOutsideAdminModerationStatuses() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.sold);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> productService.changeStatus(product.getId(), ProductStatus.active))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATUS);
+
+        verify(productRepository, never()).save(any(Product.class));
     }
 
     @Test

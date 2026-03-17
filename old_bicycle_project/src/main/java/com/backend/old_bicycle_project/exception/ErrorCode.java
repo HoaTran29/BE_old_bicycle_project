@@ -30,7 +30,9 @@ public enum ErrorCode {
     PAYMENT_GATEWAY_ERROR(1022, "Payment gateway request failed", HttpStatus.BAD_GATEWAY),
     INVALID_REQUEST_BODY(1023, "Request body khong hop le", HttpStatus.BAD_REQUEST),
     EMAIL_NOT_VERIFIED(1024, "Please verify your email before logging in", HttpStatus.FORBIDDEN),
-    SELF_STATUS_CHANGE_NOT_ALLOWED(1025, "Admin cannot change their own status", HttpStatus.BAD_REQUEST);
+    SELF_STATUS_CHANGE_NOT_ALLOWED(1025, "Admin cannot change their own status", HttpStatus.BAD_REQUEST),
+    REFERENCE_DATA_IN_USE(1026, "Reference data is being used and cannot be deleted", HttpStatus.BAD_REQUEST),
+    CATEGORY_HIERARCHY_INVALID(1027, "Invalid category hierarchy", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;
