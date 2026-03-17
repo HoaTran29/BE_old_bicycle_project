@@ -54,7 +54,7 @@ public class ProductController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    @PreAuthorize("hasRole('SELLER')")
     public ApiResponse<ProductResponse> createProduct(
             @Valid @ModelAttribute ProductCreateRequest request,
             @RequestPart(value = "images", required = false) List<MultipartFile> images,
@@ -67,7 +67,7 @@ public class ProductController {
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    @PreAuthorize("hasRole('SELLER')")
     public ApiResponse<ProductResponse> updateProduct(
             @PathVariable UUID id,
             @ModelAttribute ProductUpdateRequest request,
@@ -80,7 +80,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    @PreAuthorize("hasRole('SELLER')")
     public ApiResponse<String> deleteProduct(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser
@@ -92,7 +92,7 @@ public class ProductController {
     }
 
     @GetMapping("/my")
-    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    @PreAuthorize("hasRole('SELLER')")
     public ApiResponse<Page<ProductResponse>> getMyProducts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "12") int size,

@@ -52,8 +52,6 @@ public class SecurityConfig {
                                                 "/api/auth/reset-password",
                                                 "/api/auth/verify-email",
                                                 "/api/payments/sepay/webhook",
-                                                "/api/auth/profile",
-                                                "/api/auth/change-password",
                                                 // Swagger UI
                                                 "/swagger-ui/**",
                                                 "/swagger-ui.html",
@@ -92,7 +90,8 @@ public class SecurityConfig {
                                                                 "/api/categories",
                                                                 "/api/categories/*",
                                                                 "/api/brake-types",
-                                                                "/api/frame-materials")
+                                                                "/api/frame-materials",
+                                                                "/api/users/*/reviews")
                                                 .permitAll()
 
                                                 // ===== WebSocket =====

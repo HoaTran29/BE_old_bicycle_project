@@ -12,6 +12,7 @@ import com.backend.old_bicycle_project.entity.Inspection;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.ProductImage;
 import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
@@ -20,6 +21,7 @@ import com.backend.old_bicycle_project.repository.BrakeTypeRepository;
 import com.backend.old_bicycle_project.repository.CategoryRepository;
 import com.backend.old_bicycle_project.repository.FrameMaterialRepository;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
+import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.specification.ProductSpecification;
@@ -49,9 +51,19 @@ public class ProductService {
             ProductStatus.inspected_passed,
             ProductStatus.inspected_failed
     );
+    private static final List<OrderStatus> ACTIVE_TRANSACTION_STATUSES = List.of(
+            OrderStatus.pending,
+            OrderStatus.deposited
+    );
+    private static final List<ProductStatus> ADMIN_MODERATED_STATUSES = List.of(
+            ProductStatus.pending,
+            ProductStatus.active,
+            ProductStatus.hidden
+    );
 
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
+    private final OrderRepository orderRepository;
     private final BrandRepository brandRepository;
     private final CategoryRepository categoryRepository;
     private final BrakeTypeRepository brakeTypeRepository;
@@ -123,10 +135,7 @@ public class ProductService {
     @Transactional
     public ProductResponse update(UUID id, ProductUpdateRequest request, List<MultipartFile> newImages, User currentUser) {
         Product product = findActiveProductById(id);
-
-        if (!product.getSeller().getId().equals(currentUser.getId())) {
-            throw new AppException(ErrorCode.FORBIDDEN);
-        }
+        validateSellerCanModify(product, currentUser);
 
         if (request.getTitle() != null) product.setTitle(request.getTitle());
         if (request.getDescription() != null) product.setDescription(request.getDescription());
@@ -174,10 +183,7 @@ public class ProductService {
     @Transactional
     public void delete(UUID id, User currentUser) {
         Product product = findActiveProductById(id);
-
-        if (!product.getSeller().getId().equals(currentUser.getId())) {
-            throw new AppException(ErrorCode.FORBIDDEN);
-        }
+        validateSellerCanModify(product, currentUser);
 
         removeStoredImages(product);
         product.setDeletedAt(LocalDateTime.now());
@@ -202,6 +208,9 @@ public class ProductService {
 
     @Transactional
     public ProductResponse changeStatus(UUID id, ProductStatus newStatus) {
+        if (!ADMIN_MODERATED_STATUSES.contains(newStatus)) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
         Product product = findActiveProductById(id);
         product.setStatus(newStatus);
         return toResponse(productRepository.save(product));
@@ -288,6 +297,18 @@ public class ProductService {
     private void validateRequiredTechnicalFields(String frameSize, String wheelSize) {
         if (frameSize == null || frameSize.isBlank() || wheelSize == null || wheelSize.isBlank()) {
             throw new AppException(ErrorCode.PRODUCT_TECHNICAL_FIELDS_REQUIRED);
+        }
+    }
+
+    private void validateSellerCanModify(Product product, User currentUser) {
+        if (!product.getSeller().getId().equals(currentUser.getId())) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
+        if (product.getStatus() == ProductStatus.sold) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+        if (orderRepository.existsByProductIdAndStatusIn(product.getId(), ACTIVE_TRANSACTION_STATUSES)) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
         }
     }
 

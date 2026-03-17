@@ -4,6 +4,7 @@ import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -15,7 +16,7 @@ import java.util.Objects;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(value = Exception.class)
-    ResponseEntity<ApiResponse<?>> handlingRuntimeException(RuntimeException exception) {
+    ResponseEntity<ApiResponse<?>> handlingRuntimeException(Exception exception) {
         log.error("Exception: ", exception);
         ApiResponse<?> apiResponse = new ApiResponse<>();
 
@@ -67,5 +68,15 @@ public class GlobalExceptionHandler {
         apiResponse.setMessage(responseMessage);
 
         return ResponseEntity.badRequest().body(apiResponse);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<ApiResponse<?>> handlingMalformedRequest(HttpMessageNotReadableException exception) {
+        log.error("Malformed request body", exception);
+
+        return ResponseEntity.badRequest().body(ApiResponse.builder()
+                .code(ErrorCode.INVALID_REQUEST_BODY.getCode())
+                .message(ErrorCode.INVALID_REQUEST_BODY.getMessage())
+                .build());
     }
 }

@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -48,6 +49,18 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getCode()).isEqualTo(ErrorCode.INVALID_PASSWORD.getCode());
         assertThat(response.getBody().getMessage()).isEqualTo(ErrorCode.INVALID_PASSWORD.getMessage());
+    }
+
+    @Test
+    void handlingMalformedRequestReturnsReadableMessage() {
+        HttpMessageNotReadableException exception = new HttpMessageNotReadableException("Malformed JSON");
+
+        ResponseEntity<ApiResponse<?>> response = handler.handlingMalformedRequest(exception);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getCode()).isEqualTo(ErrorCode.INVALID_REQUEST_BODY.getCode());
+        assertThat(response.getBody().getMessage()).isEqualTo(ErrorCode.INVALID_REQUEST_BODY.getMessage());
     }
 
     private MethodArgumentNotValidException methodArgumentNotValidException(

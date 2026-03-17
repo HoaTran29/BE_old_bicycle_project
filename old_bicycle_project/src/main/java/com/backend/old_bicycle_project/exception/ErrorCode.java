@@ -27,7 +27,8 @@ public enum ErrorCode {
     CURRENT_PASSWORD_INVALID(1019, "Current password is incorrect", HttpStatus.BAD_REQUEST),
     PRODUCT_TECHNICAL_FIELDS_REQUIRED(1020, "Frame size and wheel size are required", HttpStatus.BAD_REQUEST),
     PRODUCT_MINIMUM_IMAGES_REQUIRED(1021, "At least 3 product images are required", HttpStatus.BAD_REQUEST),
-    PAYMENT_GATEWAY_ERROR(1022, "Payment gateway request failed", HttpStatus.BAD_GATEWAY);
+    PAYMENT_GATEWAY_ERROR(1022, "Payment gateway request failed", HttpStatus.BAD_GATEWAY),
+    INVALID_REQUEST_BODY(1023, "Request body khong hop le", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

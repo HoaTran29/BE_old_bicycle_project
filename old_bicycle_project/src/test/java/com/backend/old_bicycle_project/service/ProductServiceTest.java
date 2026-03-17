@@ -18,6 +18,7 @@ import com.backend.old_bicycle_project.repository.BrakeTypeRepository;
 import com.backend.old_bicycle_project.repository.CategoryRepository;
 import com.backend.old_bicycle_project.repository.FrameMaterialRepository;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
+import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,9 @@ class ProductServiceTest {
 
     @Mock
     private ProductImageRepository productImageRepository;
+
+    @Mock
+    private OrderRepository orderRepository;
 
     @Mock
     private BrandRepository brandRepository;
@@ -229,6 +233,41 @@ class ProductServiceTest {
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
         assertThat(inspection.getPassed()).isFalse();
         assertThat(inspection.getValidUntil()).isNotNull();
+    }
+
+    @Test
+    void updateRejectsWhenProductHasActiveTransaction() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+        ProductUpdateRequest request = new ProductUpdateRequest();
+        request.setTitle("Khong duoc sua khi dang co giao dich");
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), anyList())).thenReturn(true);
+
+        assertThatThrownBy(() -> productService.update(product.getId(), request, null, seller))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATUS);
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    void deleteRejectsWhenProductHasActiveTransaction() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), anyList())).thenReturn(true);
+
+        assertThatThrownBy(() -> productService.delete(product.getId(), seller))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATUS);
+
+        verify(productRepository, never()).save(any(Product.class));
+        verify(storageService, never()).deleteFile(anyString());
     }
 
     @Test
