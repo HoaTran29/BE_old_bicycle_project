@@ -1,265 +1,461 @@
-# WebSocket JWT Chat Auth Cho Nguoi Moi Hoc
+# WebSocket, STOMP, JWT Và Chat Realtime Cho Người Mới Học
 
-Ngay cap nhat: 2026-03-12  
-Pham vi: Cach backend rang buoc danh tinh nguoi gui tin nhan trong chat real-time
+## Bối cảnh
 
-## 1. Boc canh
+Trong project này, chat không chỉ dùng REST API.
 
-Project nay co chat real-time dung WebSocket va STOMP.
+Nó dùng thêm:
 
-Luc dau, payload chat co field `senderId`, va backend doc field nay de biet ai la nguoi gui tin nhan. Cach do nghe co ve don gian, nhung no co mot lo hong lon:
+- `WebSocket`
+- `STOMP`
+- `JWT`
 
-- client co the tu sua `senderId`
-- nguoi dung A co the gia mao thanh nguoi dung B
+để gửi tin nhắn theo thời gian thực.
 
-Noi ngan gon: neu backend tin vao `senderId` do client tu khai, thi danh tinh nguoi gui khong con dang tin cay.
+Nếu chỉ nhìn code một lúc, người mới rất dễ bị rối vì thấy vừa có:
 
-## 2. Dinh nghia can biet truoc
+- `GET /api/conversations/me`
+- `GET /api/conversations/{id}/messages`
+- `PUT /api/conversations/{id}/read`
+- `@MessageMapping("/chat.sendMessage")`
+- `WebSocketAuthChannelInterceptor`
+- `SimpMessagingTemplate`
 
-### WebSocket la gi?
+Note này giải thích từng phần một cách chậm và rõ.
 
-`WebSocket` la ket noi giu cho client va server noi chuyen lien tuc theo thoi gian thuc.
+## WebSocket là gì?
 
-No khac voi HTTP thong thuong o cho:
+`WebSocket` là một kết nối lâu dài giữa client và server.
 
-- HTTP: goi xong roi dong
-- WebSocket: mo ket noi, roi gui/nhan nhieu lan tren cung mot kenh
+Khác với HTTP bình thường:
 
-Chat real-time rat hay dung WebSocket.
+- HTTP thường là gửi request xong rồi đóng
+- WebSocket là mở kết nối, rồi hai bên có thể gửi dữ liệu qua lại nhiều lần trên cùng kết nối đó
 
-### STOMP la gi?
+Điều này rất hợp với:
 
-`STOMP` la mot giao thuc nhan tin chay tren WebSocket.
+- chat realtime
+- thông báo realtime
+- game realtime
+- dashboard cần cập nhật liên tục
 
-Ban co the hieu no la "cach dong goi tin nhan co cau truc" de server va client hieu nhau ro hon.
+## Vì sao chat hay dùng WebSocket?
 
-Vi du:
+Với chat, nếu chỉ dùng HTTP polling:
 
-- `CONNECT`: ket noi vao he thong chat
-- `SEND`: gui mot tin nhan
-- `SUBSCRIBE`: dang ky nghe mot kenh tin nhan
+- FE phải gọi API liên tục để hỏi “có tin nhắn mới chưa?”
+- vừa chậm, vừa tốn tài nguyên
 
-### JWT la gi?
+Với WebSocket:
 
-`JWT` la token xac thuc.
+- backend có thể đẩy tin nhắn mới xuống ngay
+- người dùng thấy tin nhắn xuất hiện gần như tức thời
 
-Sau khi dang nhap, backend cap token cho user.  
-Khi user goi API hoac ket noi STOMP, token nay duoc gui len de backend xac minh:
+## STOMP là gì?
 
-- day co dung la user da dang nhap khong
-- token con han khong
+`STOMP` là một giao thức nhắn tin chạy trên WebSocket.
 
-### Principal la gi?
+Hiểu đơn giản:
 
-`Principal` la danh tinh ma server dang gan cho mot session hoac mot request.
+- WebSocket giống như cái ống truyền dữ liệu
+- STOMP giống như cách tổ chức thư từ chạy bên trong cái ống đó
 
-Hieu don gian:
+STOMP có các khái niệm quen thuộc:
 
-- neu server da xac thuc ban la user A
-- thi `Principal` la "day la user A"
+- `CONNECT`
+- `SUBSCRIBE`
+- `SEND`
 
-Trong phase nay, WebSocket session sau khi xac thuc se duoc gan mot `Principal`.
+Nó giúp FE và BE nói chuyện có cấu trúc hơn thay vì tự bịa format raw text.
 
-## 3. Van de cu the cua chat truoc khi sua
+## JWT là gì trong luồng WebSocket?
 
-Truoc day, luong chat co the hieu la:
+`JWT` là token xác thực.
 
-1. Client gui payload:
+Trong project này:
+
+- REST API protected dùng `Authorization: Bearer <token>`
+- WebSocket STOMP cũng dùng cùng token đó ở frame `CONNECT`
+
+Backend sẽ đọc token này để biết:
+
+- ai đang kết nối
+- user đó có hợp lệ không
+
+## Những kiến thức quan trọng về WebSocket cần nhớ
+
+### 1. WebSocket không thay thế hết REST API
+
+Đây là điểm rất quan trọng.
+
+Trong project này:
+
+- REST API dùng để lấy danh sách conversation, lịch sử message, đánh dấu đã đọc
+- WebSocket dùng để đẩy message mới theo thời gian thực
+
+Nghĩa là:
+
+- REST và WebSocket **đi cùng nhau**
+- không phải chọn một bỏ một
+
+### 2. Kết nối WebSocket phải được xác thực
+
+Nếu backend không kiểm tra JWT khi `CONNECT`, người lạ có thể:
+
+- kết nối vào hệ thống chat
+- gửi message giả
+- subscribe nhầm queue của người khác
+
+Vì vậy project này dùng:
+
+- [WebSocketAuthChannelInterceptor.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/security/WebSocketAuthChannelInterceptor.java)
+
+để chặn ngay từ đầu.
+
+### 3. Cần hiểu sự khác nhau giữa topic chung và queue riêng
+
+Trong project này có hai kiểu destination quan trọng:
+
+- `/topic/conversation/{conversationId}`
+  - dùng cho màn chat đang mở
+  - ai subscribe conversation đó sẽ nhận được message mới
+- `/user/queue/messages`
+  - dùng như queue riêng của từng user
+  - phục vụ unread badge hoặc global notification cập nhật chat
+
+### 4. WebSocket chỉ đẩy message mới, không tự sinh lịch sử
+
+Nếu user reload trang:
+
+- FE vẫn phải gọi REST để lấy lịch sử cũ
+- WebSocket chỉ giúp nhận phần mới phát sinh sau khi đã kết nối
+
+### 5. Reconnect là chuyện bình thường
+
+WebSocket có thể bị rớt vì:
+
+- mạng yếu
+- đổi mạng
+- refresh browser
+- ngrok/staging restart
+
+Nên FE phải có chiến lược:
+
+- reconnect
+- resubscribe
+- đồng bộ lại unread/message list bằng REST nếu cần
+
+## Project này tích hợp WebSocket như thế nào?
+
+## Các file chính
+
+- [WebSocketConfig.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/config/WebSocketConfig.java)
+- [WebSocketAuthChannelInterceptor.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/security/WebSocketAuthChannelInterceptor.java)
+- [ChatController.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/controller/ChatController.java)
+- [MessageServiceImpl.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/impl/MessageServiceImpl.java)
+- [ConversationServiceImpl.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/impl/ConversationServiceImpl.java)
+
+## WebSocketConfig làm gì?
+
+[WebSocketConfig.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/config/WebSocketConfig.java) cấu hình:
+
+- endpoint kết nối: `/ws`
+- application prefix: `/app`
+- broker prefixes:
+  - `/topic`
+  - `/queue`
+- user destination prefix: `/user`
+
+Điều đó có nghĩa:
+
+- FE connect vào `/ws`
+- FE gửi message tới `/app/chat.sendMessage`
+- backend publish ra `/topic/...` hoặc `/user/...`
+
+## WebSocketAuthChannelInterceptor làm gì?
+
+[WebSocketAuthChannelInterceptor.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/security/WebSocketAuthChannelInterceptor.java) là lớp đứng chặn ở inbound channel.
+
+Nó xử lý như sau:
+
+1. Nếu frame là `CONNECT`
+   - đọc header `Authorization` hoặc `authorization`
+   - kiểm tra phải có `Bearer <token>`
+   - validate JWT
+   - trích email từ token
+   - tìm user trong database
+   - gắn `Principal` vào session WebSocket
+2. Nếu frame là `SEND`, `SUBSCRIBE`, `UNSUBSCRIBE`
+   - nếu chưa có user hợp lệ thì chặn
+
+Nghĩa là backend không tin client ngay. Backend chỉ tin session đã được xác thực.
+
+## ChatController làm gì?
+
+[ChatController.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/controller/ChatController.java) có hai phần:
+
+### 1. REST API
+
+- `GET /api/conversations/me`
+- `POST /api/conversations?productId=...`
+- `GET /api/conversations/{conversationId}/messages?page=&size=`
+- `PUT /api/conversations/{conversationId}/read`
+
+### 2. WebSocket endpoint
+
+- `@MessageMapping("/chat.sendMessage")`
+
+Đây là method xử lý khi FE gửi STOMP `SEND` tới `/app/chat.sendMessage`.
+
+## Luồng thực tế của chat realtime
+
+```mermaid
+sequenceDiagram
+    participant FE as FE
+    participant WS as WebSocketAuthChannelInterceptor
+    participant Chat as ChatController
+    participant Msg as MessageServiceImpl
+    participant Conv as ConversationServiceImpl
+    participant Repo as Repository
+    participant DB as Database
+    participant Broker as STOMP Broker
+
+    FE->>WS: CONNECT + Authorization: Bearer <JWT>
+    WS->>WS: validate token
+    WS->>DB: load user by email
+    WS-->>FE: session authenticated
+
+    FE->>Broker: SUBSCRIBE /topic/conversation/{conversationId}
+    FE->>Broker: SUBSCRIBE /user/queue/messages
+
+    FE->>Chat: SEND /app/chat.sendMessage
+    Chat->>Msg: sendMessage(request, senderId)
+    Msg->>Repo: save message
+    Repo->>DB: insert message
+    Msg-->>Chat: MessageResponseDTO
+    Chat->>Conv: getConversationById(conversationId)
+    Conv->>Repo: load conversation
+    Repo->>DB: select conversation
+    Chat->>Broker: publish /topic/conversation/{conversationId}
+    Chat->>Broker: publish /user/queue/messages
+    Broker-->>FE: message realtime
+```
+
+## Giải thích lại bằng lời đơn giản
+
+1. FE đăng nhập trước để có JWT.
+2. FE mở kết nối STOMP tới `/ws` và gửi JWT trong frame `CONNECT`.
+3. Interceptor kiểm tra token.
+4. Nếu token hợp lệ, session WebSocket được gắn với user thật.
+5. FE subscribe:
+   - một channel conversation cụ thể
+   - một queue riêng của user
+6. Khi FE gửi tin nhắn mới:
+   - backend lấy `senderId` từ `Principal`
+   - backend lưu message vào database
+   - backend tìm recipient
+   - backend broadcast lại ra broker
+7. FE nhận message mới ngay mà không cần polling liên tục.
+
+## Mối liên quan giữa REST API và WebSocket
+
+### REST API nào liên quan?
+
+| API | Vai trò |
+| --- | --- |
+| `POST /api/conversations?productId=...` | tạo hoặc lấy conversation trước khi chat |
+| `GET /api/conversations/me` | lấy danh sách conversation |
+| `GET /api/conversations/{conversationId}/messages` | lấy lịch sử message |
+| `PUT /api/conversations/{conversationId}/read` | đánh dấu đã đọc |
+
+### WebSocket nào liên quan?
+
+- connect vào `/ws`
+- send tới `/app/chat.sendMessage`
+- subscribe:
+  - `/topic/conversation/{conversationId}`
+  - `/user/queue/messages`
+
+## Quan hệ giữa chúng
+
+REST lo phần:
+
+- đồng bộ dữ liệu nền
+- lấy dữ liệu cũ
+- đánh dấu read
+- dựng UI lần đầu
+
+WebSocket lo phần:
+
+- đẩy message mới
+- cập nhật realtime
+
+Nếu FE chỉ dùng WebSocket mà không gọi REST:
+
+- sẽ thiếu lịch sử cũ
+- reload trang xong sẽ không biết conversation nào tồn tại
+
+Nếu FE chỉ dùng REST mà không dùng WebSocket:
+
+- chat sẽ không realtime
+
+## FE cần tích hợp như thế nào?
+
+### Bước 1. Login lấy JWT
+
+FE gọi:
+
+- `POST /api/auth/login`
+
+Sau khi có `accessToken`, FE lưu token vào auth store.
+
+### Bước 2. Vào màn chat
+
+FE nên:
+
+1. gọi `GET /api/conversations/me`
+2. nếu user mở chat từ product detail, gọi `POST /api/conversations?productId=...`
+3. gọi `GET /api/conversations/{id}/messages`
+4. rồi mới mở WebSocket/STOMP
+
+### Bước 3. Connect STOMP
+
+FE connect tới `/ws` với header:
+
+```text
+Authorization: Bearer <accessToken>
+```
+
+### Bước 4. Subscribe
+
+FE subscribe:
+
+- `/topic/conversation/{conversationId}`
+- `/user/queue/messages`
+
+### Bước 5. Send message
+
+FE gửi:
 
 ```json
 {
-  "conversationId": "abc",
-  "senderId": "user-b",
-  "content": "xin chao"
+  "conversationId": "uuid",
+  "content": "xin chào",
+  "imageUrl": null
 }
 ```
 
-2. Backend doc `senderId`.
-3. Backend tin rang day la nguoi gui that.
+tới:
 
-Van de o day la gi?
-
-Neu dang dang nhap bang user A, client van co the tu sua payload thanh:
-
-- `senderId = user-b`
-
-Khi do backend co nguy co luu tin nhan nhu the user B vua gui.
-
-Day la mot loai loi rat nguy hiem: **tin vao du lieu nhay cam do client tu khai**.
-
-## 4. Nguyen tac dung la gi?
-
-Nguyen tac dung la:
-
-**Danh tinh phai den tu session da duoc xac thuc, khong phai tu payload.**
-
-Hay nho:
-
-- `payload` la noi dung user muon gui
-- `auth context` moi la noi cho biet user do la ai
-
-Trong code backend tot, 2 thu nay phai tach nhau ra.
-
-## 5. Phase nay da sua theo huong nao?
-
-Backend da doi sang flow sau:
-
-1. Client `CONNECT` vao STOMP.
-2. Client gui `Authorization: Bearer <token>`.
-3. Interceptor cua backend doc token nay.
-4. Backend validate JWT.
-5. Neu hop le, backend tim user that.
-6. Backend tao `Principal` cho session WebSocket.
-7. Khi client gui `SEND`, backend lay `senderId` tu `Principal`.
-8. Field `senderId` trong payload khong con la nguon su that nua.
-
-## 6. Interceptor trong bai toan nay la gi?
-
-`Interceptor` la mot lop dung de chan ngang du lieu truoc khi no di tiep vao he thong.
-
-Co the hieu no giong nhu mot chot kiem tra.
-
-Trong phase nay, `WebSocketAuthChannelInterceptor` lam viec nhu sau:
-
-- neu la frame `CONNECT`
-  - kiem tra co bearer token khong
-  - validate JWT
-  - tim user trong database
-  - gan `Principal` vao session
-- neu la frame `SEND` hoac `SUBSCRIBE`
-  - neu session chua co user xac thuc thi chan lai
-
-Nghia la:
-
-- khong co token -> khong cho ket noi chat dung cach
-- co token sai -> khong cho gui tin nhan
-
-## 7. Tai sao `Principal.name` lai la `userId` ma khong phai email?
-
-Day la mot diem rat thuc te trong project nay.
-
-Chat va notification dang dung:
-
-```java
-convertAndSendToUser(userId.toString(), "/queue/messages", ...)
+```text
+/app/chat.sendMessage
 ```
 
-Va
+## FE cần lưu ý gì?
 
-```java
-convertAndSendToUser(userId.toString(), "/queue/notifications", ...)
-```
+### 1. Không tự tin vào `senderId`
 
-Dieu nay co nghia la he thong private queue dang route theo `userId`.
+`MessageRequestDTO` có field `senderId`, nhưng FE không nên dựa vào đó.
 
-Neu `Principal.name` la email thi se co lech:
+Trong project này, backend lấy người gửi thật từ `Principal`.
 
-- server gui theo `userId`
-- session lai dang ky theo `email`
+### 2. Phải handle reconnect
 
-Ket qua la tin nhan private queue co the khong den dung nguoi.
+Nếu socket rớt:
 
-Cho nen phase nay backend tao `StompUserPrincipal` voi:
+- reconnect
+- subscribe lại
+- có thể reload message bằng REST nếu cần
 
-- `getName()` tra ve `userId`
+### 3. Cần kết hợp unread badge với REST
 
-Day la cach de he thong chat va notification noi chuyen dung "ngon ngu" voi nhau.
+`/user/queue/messages` giúp cập nhật nhanh.
 
-## 8. Vi du de de hieu
+Nhưng khi user mở lại app hoặc reload:
 
-### Truoc khi sua
+- vẫn nên sync unread/count hoặc conversation list bằng REST
 
-User A dang nhap, nhung client gui:
+### 4. Cần phân biệt “message đến conversation đang mở” và “message mới ở conversation khác”
 
-```json
-{
-  "conversationId": "c1",
-  "senderId": "user-b",
-  "content": "Toi la B day"
-}
-```
+- `/topic/conversation/{id}` phù hợp cho cửa sổ chat đang mở
+- `/user/queue/messages` phù hợp cho global badge/notification
 
-Neu backend tin vao payload, he thong co the luu sai la user B vua gui tin nhan.
+### 5. Nên xử lý optimistic UI cẩn thận
 
-### Sau khi sua
+FE có thể render message tạm thời trước cho mượt, nhưng vẫn phải chấp nhận message thật từ server để:
 
-User A dang nhap va ket noi STOMP bang token cua A.
+- lấy `id` thật
+- lấy `createdAt` thật
+- tránh lệch state
 
-Khi gui message:
+## Khó khăn khi tích hợp FE là gì?
 
-```json
-{
-  "conversationId": "c1",
-  "senderId": "user-b",
-  "content": "Toi la B day"
-}
-```
+### Mức độ khó
 
-Backend bo qua `senderId` trong payload.
+Khó hơn CRUD REST bình thường.
 
-Backend lay danh tinh that tu session:
+Lý do:
 
-- `principal.getName() = user-a-id`
+- có state của socket
+- có reconnect
+- có subscribe/unsubscribe
+- có unread/read sync
+- có đồng bộ giữa REST và realtime
 
-Nen tin nhan van duoc luu la cua user A, khong phai user B.
+### Những lỗi FE hay gặp
 
-## 9. Tai sao day la mot cai tien quan trong?
+1. connect socket nhưng quên gửi JWT
+2. subscribe sai path
+3. chỉ subscribe `/topic/...` mà quên `/user/queue/messages`
+4. không unsubscribe khi đổi conversation
+5. reload trang xong quên gọi REST để lấy lịch sử
+6. badge unread bị lệch vì chỉ tin socket, không sync lại
 
-Vi no giai quyet mot quy tac backend rat can ban:
+## Áp dụng cụ thể trong project này
 
-**Du lieu lien quan den quyen han va danh tinh phai do server kiem soat.**
+### File backend chính
 
-Neu khong, bat ky chuc nang nao cung co the bi gia mao:
+- cấu hình socket:
+  - [WebSocketConfig.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/config/WebSocketConfig.java)
+- xác thực JWT cho STOMP:
+  - [WebSocketAuthChannelInterceptor.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/security/WebSocketAuthChannelInterceptor.java)
+- REST + realtime controller:
+  - [ChatController.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/controller/ChatController.java)
+- lưu message:
+  - [MessageServiceImpl.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/impl/MessageServiceImpl.java)
 
-- chat
-- notification
-- order action
-- review
-- report
+### Điều đã được siết thêm bằng regression
 
-Chat la mot vi du rat de thay, nhung bai hoc nay dung duoc cho rat nhieu module khac.
+Trong tranche gần đây, backend đã có regression cho:
 
-## 10. Nhung loi nguoi moi hoc hay gap
+- lowercase `authorization`
+- invalid token
+- unknown user
+- unauthenticated `SUBSCRIBE`
+- user ngoài conversation không được mark read
+- route message tới đúng recipient queue
 
-### Loi 1: Nghi rang da login roi thi payload nao gui len cung an toan
+Điều này giúp FE tích hợp rõ ràng hơn, vì các sai lệch thường gặp đã được backend chặn tốt hơn.
 
-Sai.  
-Login chi noi rang user da co token.  
-No khong co nghia la moi field client gui len deu dang tin.
+## Kết luận
 
-### Loi 2: Nghi rang `senderId` la bat buoc phai co trong payload
+- `WebSocket` là kênh realtime hai chiều lâu dài.
+- `STOMP` là cách tổ chức tin nhắn chạy trên WebSocket.
+- `JWT` dùng để xác thực session STOMP.
+- Trong project này, REST và WebSocket phải đi cùng nhau.
+- Luồng chuẩn là:
+  - login lấy JWT
+  - REST lấy conversation/history
+  - connect `/ws`
+  - subscribe đúng channel
+  - gửi message qua `/app/chat.sendMessage`
+  - nhận realtime qua `/topic/...` và `/user/queue/messages`
 
-Khong nhat thiet.  
-Neu server da biet nguoi gui la ai tu session, thi `senderId` trong payload co the la du thua hoac chi dung tam de backward compatibility.
+Nếu hiểu đúng mối quan hệ giữa:
 
-### Loi 3: Khong dong bo ten user trong private queue
+- REST
+- WebSocket
+- STOMP
+- JWT
 
-Neu session dang theo email ma `convertAndSendToUser` lai gui theo `userId`, tin nhan co the khong route dung.
-
-### Loi 4: Chi khoa `SEND` ma quen `CONNECT` va `SUBSCRIBE`
-
-Neu chi chan luc gui tin nhan ma khong chan luc ket noi hoac subscribe, thi van co the phat sinh hanh vi khong mong muon.
-
-## 11. Kien thuc nay vua duoc ap dung vao file nao?
-
-Neu muon doi chieu ly thuyet voi code, xem:
-
-- `src/main/java/com/backend/old_bicycle_project/security/WebSocketAuthChannelInterceptor.java`
-- `src/main/java/com/backend/old_bicycle_project/security/StompUserPrincipal.java`
-- `src/main/java/com/backend/old_bicycle_project/config/WebSocketConfig.java`
-- `src/main/java/com/backend/old_bicycle_project/controller/ChatController.java`
-- `src/main/java/com/backend/old_bicycle_project/service/MessageService.java`
-- `src/main/java/com/backend/old_bicycle_project/service/impl/MessageServiceImpl.java`
-
-## 12. Chot lai cho de nho
-
-Neu giai thich ngan gon cho sinh vien nam nhat:
-
-- `payload` la du lieu user muon gui
-- `JWT` la cach chung minh user da dang nhap
-- `Principal` la danh tinh ma server cong nhan
-- backend dung phai lay danh tinh tu `Principal`, khong lay tu payload
-
-Va cau quan trong nhat cua phase nay la:
-
-**Nguoi gui tin nhan phai do server xac dinh, khong phai do client tu khai.**
+thì phần chat realtime sẽ bớt “ma thuật” và dễ debug hơn rất nhiều.
