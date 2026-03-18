@@ -176,6 +176,7 @@ INSERT INTO inspections (
     drivetrain_score, wheels_score, wear_percentage, expert_notes, passed, report_file_url,
     valid_until, created_at
 ) VALUES
+    ('00000000-0000-0000-0000-000000004003', '00000000-0000-0000-0000-000000002006', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false, NULL, NULL, '2026-03-17 09:00:00'),
     ('00000000-0000-0000-0000-000000004001', '00000000-0000-0000-0000-000000002007', '00000000-0000-0000-0000-000000000002', 4.6, 5, 4, 4, 5, 5, 18, 'Khung ổn, truyền động tốt, có thể giao dịch bình thường.', true, 'https://example.com/reports/inspection-4001.pdf', '2026-06-01 00:00:00', '2026-03-13 09:00:00'),
     ('00000000-0000-0000-0000-000000004002', '00000000-0000-0000-0000-000000002008', '00000000-0000-0000-0000-000000000002', 2.1, 1, 2, 3, 2, 2, 72, 'Khung có dấu hiệu nứt, bộ truyền động mòn mạnh.', false, 'https://example.com/reports/inspection-4002.pdf', '2026-04-15 00:00:00', '2026-03-13 10:00:00')
 ON CONFLICT (id) DO NOTHING;

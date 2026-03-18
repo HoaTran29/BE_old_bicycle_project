@@ -1,5 +1,6 @@
 package com.backend.old_bicycle_project.service.impl;
 
+import com.backend.old_bicycle_project.dto.request.InspectionEvaluationDTO;
 import com.backend.old_bicycle_project.dto.response.InspectionDashboardResponseDTO;
 import com.backend.old_bicycle_project.dto.response.InspectionHistoryItemResponseDTO;
 import com.backend.old_bicycle_project.dto.response.InspectionRequestItemResponseDTO;
@@ -111,6 +112,23 @@ class InspectionServiceImplTest {
     }
 
     @Test
+    void getInspectionRequestsFallsBackWhenPendingProductHasNoInspectionRow() {
+        product.setUpdatedAt(LocalDateTime.of(2026, 3, 18, 9, 15));
+
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(product)));
+        when(inspectionRepository.findByProductId(product.getId()))
+                .thenReturn(java.util.Optional.empty());
+
+        var result = inspectionService.getInspectionRequests(null, 0, 10);
+
+        assertThat(result.getContent()).hasSize(1);
+        InspectionRequestItemResponseDTO item = result.getContent().get(0);
+        assertThat(item.getInspectionId()).isEqualTo(product.getId());
+        assertThat(item.getRequestedAt()).isEqualTo(LocalDateTime.of(2026, 3, 18, 9, 15));
+    }
+
+    @Test
     void getInspectionHistoryReturnsMappedInspectionItems() {
         when(inspectionRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(inspection)));
@@ -150,5 +168,39 @@ class InspectionServiceImplTest {
         var result = inspectionService.getInspectionByProductId(product.getId());
 
         assertThat(result).isNull();
+    }
+
+    @Test
+    void evaluateInspectionCreatesMissingInspectionRowForPendingRequest() {
+        InspectionEvaluationDTO dto = InspectionEvaluationDTO.builder()
+                .frameScore(4)
+                .forkScore(4)
+                .brakesScore(5)
+                .drivetrainScore(4)
+                .wheelsScore(5)
+                .wearPercentage(20)
+                .expertNotes("Có thể giao dịch bình thường.")
+                .passed(true)
+                .build();
+
+        product.setUpdatedAt(LocalDateTime.of(2026, 3, 18, 9, 30));
+
+        when(productRepository.findById(product.getId())).thenReturn(java.util.Optional.of(product));
+        when(userRepository.findById(inspector.getId())).thenReturn(java.util.Optional.of(inspector));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(java.util.Optional.empty());
+        when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> {
+            Inspection savedInspection = invocation.getArgument(0);
+            if (savedInspection.getId() == null) {
+                savedInspection.setId(UUID.randomUUID());
+            }
+            return savedInspection;
+        });
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = inspectionService.evaluateInspection(product.getId(), inspector.getId(), dto);
+
+        assertThat(result.getInspectorId()).isEqualTo(inspector.getId());
+        assertThat(result.getPassed()).isTrue();
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.inspected_passed);
     }
 }

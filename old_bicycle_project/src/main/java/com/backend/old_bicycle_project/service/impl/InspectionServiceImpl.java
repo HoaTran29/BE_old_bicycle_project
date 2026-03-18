@@ -86,15 +86,18 @@ public class InspectionServiceImpl implements InspectionService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 
-        Inspection inspection = inspectionRepository.findByProductId(productId)
-                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
-
         User inspector = userRepository.findById(inspectorId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
         if (product.getStatus() != ProductStatus.pending_inspection) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
+
+        Inspection inspection = inspectionRepository.findByProductId(productId)
+                .orElseGet(() -> Inspection.builder()
+                        .product(product)
+                        .createdAt(product.getUpdatedAt() != null ? product.getUpdatedAt() : LocalDateTime.now())
+                        .build());
 
         double averageScore = (dto.getFrameScore() + dto.getForkScore() + dto.getBrakesScore()
                 + dto.getDrivetrainScore() + dto.getWheelsScore()) / 5.0;
@@ -203,11 +206,10 @@ public class InspectionServiceImpl implements InspectionService {
     }
 
     private InspectionRequestItemResponseDTO mapRequestItem(Product product) {
-        Inspection inspection = inspectionRepository.findByProductId(product.getId())
-                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
+        Inspection inspection = inspectionRepository.findByProductId(product.getId()).orElse(null);
 
         return InspectionRequestItemResponseDTO.builder()
-                .inspectionId(inspection.getId())
+                .inspectionId(inspection != null ? inspection.getId() : product.getId())
                 .productId(product.getId())
                 .productTitle(product.getTitle())
                 .productPrice(product.getPrice())
@@ -216,7 +218,9 @@ public class InspectionServiceImpl implements InspectionService {
                 .sellerId(product.getSeller().getId())
                 .sellerName(product.getSeller().getFullName())
                 .sellerPhone(product.getSeller().getPhone())
-                .requestedAt(inspection.getCreatedAt())
+                .requestedAt(inspection != null
+                        ? inspection.getCreatedAt()
+                        : (product.getUpdatedAt() != null ? product.getUpdatedAt() : product.getCreatedAt()))
                 .build();
     }
 
