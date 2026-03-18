@@ -220,7 +220,7 @@ sequenceDiagram
     participant DB as Database
     participant Broker as STOMP Broker
 
-    FE->>WS: CONNECT + Authorization: Bearer <JWT>
+    FE->>WS: CONNECT + Authorization Bearer <JWT>
     WS->>WS: validate token
     WS->>DB: load user by email
     WS-->>FE: session authenticated

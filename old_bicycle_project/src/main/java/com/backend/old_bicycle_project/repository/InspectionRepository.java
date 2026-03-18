@@ -11,4 +11,6 @@ import java.util.UUID;
 public interface InspectionRepository extends JpaRepository<Inspection, UUID> {
 
     Optional<Inspection> findByProductId(UUID productId);
+
+    boolean existsByProductId(UUID productId);
 }

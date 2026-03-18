@@ -3,6 +3,7 @@ package com.backend.old_bicycle_project.service.impl;
 import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.RefundCreateRequestDTO;
 import com.backend.old_bicycle_project.dto.request.RefundReviewRequestDTO;
+import com.backend.old_bicycle_project.dto.response.AdminRefundResponseDTO;
 import com.backend.old_bicycle_project.dto.response.RefundResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Payment;
@@ -18,9 +19,14 @@ import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
+import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
 import com.backend.old_bicycle_project.service.RefundService;
+import com.backend.old_bicycle_project.specification.RefundRequestSpecification;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +42,7 @@ public class RefundServiceImpl implements RefundService {
     private final RefundRequestRepository refundRequestRepository;
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
+    private final InspectionRepository inspectionRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -116,6 +123,15 @@ public class RefundServiceImpl implements RefundService {
         );
 
         return mapToDTO(refundRequest);
+    }
+
+    @Override
+    public Page<AdminRefundResponseDTO> getAdminRefunds(String keyword, RefundStatus status, int page, int size) {
+        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        return refundRequestRepository.findAll(
+                RefundRequestSpecification.fromAdminFilter(keyword, status),
+                pageable
+        ).map(this::mapToAdminDTO);
     }
 
     private void approveRefund(
@@ -207,6 +223,43 @@ public class RefundServiceImpl implements RefundService {
                 .reviewedAt(refundRequest.getReviewedAt())
                 .processedAt(refundRequest.getProcessedAt())
                 .createdAt(refundRequest.getCreatedAt())
+                .build();
+    }
+
+    private AdminRefundResponseDTO mapToAdminDTO(RefundRequest refundRequest) {
+        Order order = refundRequest.getOrder();
+        Payment payment = refundRequest.getPayment();
+        boolean hasInspection = order != null
+                && order.getProduct() != null
+                && inspectionRepository.existsByProductId(order.getProduct().getId());
+
+        return AdminRefundResponseDTO.builder()
+                .id(refundRequest.getId())
+                .orderId(order != null ? order.getId() : null)
+                .paymentId(payment != null ? payment.getId() : null)
+                .requesterId(refundRequest.getRequester().getId())
+                .requesterName(refundRequest.getRequester().getFullName())
+                .buyerId(order != null && order.getBuyer() != null ? order.getBuyer().getId() : null)
+                .buyerName(order != null && order.getBuyer() != null ? order.getBuyer().getFullName() : null)
+                .sellerId(order != null && order.getSeller() != null ? order.getSeller().getId() : null)
+                .sellerName(order != null && order.getSeller() != null ? order.getSeller().getFullName() : null)
+                .productId(order != null && order.getProduct() != null ? order.getProduct().getId() : null)
+                .productTitle(order != null && order.getProduct() != null ? order.getProduct().getTitle() : null)
+                .hasInspection(hasInspection)
+                .amount(refundRequest.getAmount())
+                .reason(refundRequest.getReason())
+                .evidenceNote(refundRequest.getEvidenceNote())
+                .status(refundRequest.getStatus())
+                .adminNote(refundRequest.getAdminNote())
+                .refundReference(refundRequest.getRefundReference())
+                .reviewedBy(refundRequest.getReviewedBy() != null ? refundRequest.getReviewedBy().getId() : null)
+                .reviewedByName(refundRequest.getReviewedBy() != null ? refundRequest.getReviewedBy().getFullName() : null)
+                .reviewedAt(refundRequest.getReviewedAt())
+                .processedAt(refundRequest.getProcessedAt())
+                .createdAt(refundRequest.getCreatedAt())
+                .orderStatus(order != null ? order.getStatus() : null)
+                .fundingStatus(order != null ? order.getFundingStatus() : null)
+                .paymentMethod(order != null ? order.getPaymentMethod() : null)
                 .build();
     }
 }

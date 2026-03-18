@@ -1,6 +1,7 @@
 package com.backend.old_bicycle_project.security;
 
 import com.backend.old_bicycle_project.dto.response.AdminUserResponseDTO;
+import com.backend.old_bicycle_project.service.RefundService;
 import com.backend.old_bicycle_project.service.AdminUserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,9 @@ class SecurityConfigIntegrationTest {
 
     @MockBean
     private AdminUserService adminUserService;
+
+    @MockBean
+    private RefundService refundService;
 
     @Test
     void anonymousUserCannotUpdateProfile() throws Exception {
@@ -79,6 +83,13 @@ class SecurityConfigIntegrationTest {
     }
 
     @Test
+    @WithMockUser(roles = "BUYER")
+    void nonAdminUserCannotAccessAdminRefunds() throws Exception {
+        mockMvc.perform(get("/api/admin/refunds"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @WithMockUser(roles = "SELLER")
     void sellerCannotConfirmOrderReceipt() throws Exception {
         mockMvc.perform(patch("/api/orders/11111111-1111-1111-1111-111111111111/confirm-received"))
@@ -92,6 +103,16 @@ class SecurityConfigIntegrationTest {
                 .thenReturn(org.springframework.data.domain.Page.empty());
 
         mockMvc.perform(get("/api/admin/users"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void adminUserCanAccessAdminRefunds() throws Exception {
+        when(refundService.getAdminRefunds(isNull(), isNull(), eq(0), eq(12)))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+
+        mockMvc.perform(get("/api/admin/refunds"))
                 .andExpect(status().isOk());
     }
 }
