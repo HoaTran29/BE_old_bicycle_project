@@ -15,28 +15,28 @@ import lombok.NoArgsConstructor;
 public class InspectionEvaluationDTO {
 
     @NotNull(message = "Frame score is required")
-    @Min(value = 1, message = "Score must be between 1 and 10")
-    @Max(value = 10, message = "Score must be between 1 and 10")
+    @Min(value = 1, message = "Score must be between 1 and 5")
+    @Max(value = 5, message = "Score must be between 1 and 5")
     private Integer frameScore;
 
     @NotNull(message = "Fork score is required")
-    @Min(value = 1, message = "Score must be between 1 and 10")
-    @Max(value = 10, message = "Score must be between 1 and 10")
+    @Min(value = 1, message = "Score must be between 1 and 5")
+    @Max(value = 5, message = "Score must be between 1 and 5")
     private Integer forkScore;
 
     @NotNull(message = "Brakes score is required")
-    @Min(value = 1, message = "Score must be between 1 and 10")
-    @Max(value = 10, message = "Score must be between 1 and 10")
+    @Min(value = 1, message = "Score must be between 1 and 5")
+    @Max(value = 5, message = "Score must be between 1 and 5")
     private Integer brakesScore;
 
     @NotNull(message = "Drivetrain score is required")
-    @Min(value = 1, message = "Score must be between 1 and 10")
-    @Max(value = 10, message = "Score must be between 1 and 10")
+    @Min(value = 1, message = "Score must be between 1 and 5")
+    @Max(value = 5, message = "Score must be between 1 and 5")
     private Integer drivetrainScore;
 
     @NotNull(message = "Wheels score is required")
-    @Min(value = 1, message = "Score must be between 1 and 10")
-    @Max(value = 10, message = "Score must be between 1 and 10")
+    @Min(value = 1, message = "Score must be between 1 and 5")
+    @Max(value = 5, message = "Score must be between 1 and 5")
     private Integer wheelsScore;
 
     @NotNull(message = "Wear percentage is required")

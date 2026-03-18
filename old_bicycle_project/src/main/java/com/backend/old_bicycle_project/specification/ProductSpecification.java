@@ -133,4 +133,25 @@ public class ProductSpecification {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
     }
+
+    public static Specification<Product> fromInspectionRequestFilter(String keyword) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isNull(root.get("deletedAt")));
+            predicates.add(cb.equal(root.get("status"), ProductStatus.pending_inspection));
+
+            if (keyword != null && !keyword.isBlank()) {
+                String normalizedKeyword = "%" + keyword.toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("description")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("firstName")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("lastName")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("email")), normalizedKeyword)
+                ));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
 }

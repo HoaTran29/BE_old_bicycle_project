@@ -1,6 +1,7 @@
 package com.backend.old_bicycle_project.security;
 
 import com.backend.old_bicycle_project.dto.response.AdminUserResponseDTO;
+import com.backend.old_bicycle_project.service.InspectionService;
 import com.backend.old_bicycle_project.service.RefundService;
 import com.backend.old_bicycle_project.service.AdminUserService;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
@@ -33,6 +35,9 @@ class SecurityConfigIntegrationTest {
 
     @MockBean
     private RefundService refundService;
+
+    @MockBean
+    private InspectionService inspectionService;
 
     @Test
     void anonymousUserCannotUpdateProfile() throws Exception {
@@ -87,6 +92,35 @@ class SecurityConfigIntegrationTest {
     void nonAdminUserCannotAccessAdminRefunds() throws Exception {
         mockMvc.perform(get("/api/admin/refunds"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anonymousUserCannotAccessInspectionDashboard() throws Exception {
+        mockMvc.perform(get("/api/inspections/dashboard"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "BUYER")
+    void buyerCannotAccessInspectionRequests() throws Exception {
+        mockMvc.perform(get("/api/inspections/requests"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "INSPECTOR")
+    void inspectorCanAccessInspectionDashboard() throws Exception {
+        when(inspectionService.getInspectionDashboard(any()))
+                .thenReturn(com.backend.old_bicycle_project.dto.response.InspectionDashboardResponseDTO.builder()
+                        .pendingRequests(0)
+                        .completedThisWeek(0)
+                        .passRate(java.math.BigDecimal.ZERO)
+                        .averageScore(java.math.BigDecimal.ZERO)
+                        .recentInspections(java.util.List.of())
+                        .build());
+
+        mockMvc.perform(get("/api/inspections/dashboard"))
+                .andExpect(status().isOk());
     }
 
     @Test

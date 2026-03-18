@@ -13,21 +13,21 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class InspectionResponseDTO {
-    private UUID id;
+public class InspectionHistoryItemResponseDTO {
+    private UUID inspectionId;
     private UUID productId;
+    private String productTitle;
+    private BigDecimal productPrice;
+    private String province;
+    private String productImageUrl;
+    private UUID sellerId;
+    private String sellerName;
+    private String sellerPhone;
     private UUID inspectorId;
+    private String inspectorName;
     private BigDecimal overallScore;
-    private Integer frameScore;
-    private Integer forkScore;
-    private Integer brakesScore;
-    private Integer drivetrainScore;
-    private Integer wheelsScore;
-    private Integer wearPercentage;
-    private String expertNotes;
     private Boolean passed;
-    private String reportFileUrl;
+    private LocalDateTime requestedAt;
+    private LocalDateTime evaluatedAt;
     private LocalDateTime validUntil;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
 }

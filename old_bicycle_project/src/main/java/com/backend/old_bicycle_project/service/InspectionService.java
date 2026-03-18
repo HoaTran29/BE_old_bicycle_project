@@ -1,7 +1,12 @@
 package com.backend.old_bicycle_project.service;
 
 import com.backend.old_bicycle_project.dto.request.InspectionEvaluationDTO;
+import com.backend.old_bicycle_project.dto.response.InspectionDashboardResponseDTO;
+import com.backend.old_bicycle_project.dto.response.InspectionHistoryItemResponseDTO;
+import com.backend.old_bicycle_project.dto.response.InspectionRequestItemResponseDTO;
 import com.backend.old_bicycle_project.dto.response.InspectionResponseDTO;
+import com.backend.old_bicycle_project.entity.User;
+import org.springframework.data.domain.Page;
 
 import java.util.UUID;
 
@@ -30,4 +35,10 @@ public interface InspectionService {
      * @return InspectionResponseDTO
      */
     InspectionResponseDTO getInspectionByProductId(UUID productId);
+
+    Page<InspectionRequestItemResponseDTO> getInspectionRequests(String keyword, int page, int size);
+
+    Page<InspectionHistoryItemResponseDTO> getInspectionHistory(User currentUser, String keyword, int page, int size);
+
+    InspectionDashboardResponseDTO getInspectionDashboard(User currentUser);
 }
