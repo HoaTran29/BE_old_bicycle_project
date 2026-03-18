@@ -2,7 +2,9 @@ package com.backend.old_bicycle_project.specification;
 
 import com.backend.old_bicycle_project.dto.product.ProductFilterRequest;
 import com.backend.old_bicycle_project.entity.Inspection;
+import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Product;
+import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -22,6 +24,11 @@ public class ProductSpecification {
             ProductStatus.inspected_passed,
             ProductStatus.inspected_failed
     );
+    private static final List<OrderStatus> ACTIVE_TRANSACTION_STATUSES = List.of(
+            OrderStatus.pending,
+            OrderStatus.deposited,
+            OrderStatus.awaiting_buyer_confirmation
+    );
 
     public static Specification<Product> fromFilter(ProductFilterRequest filter) {
         return (root, query, cb) -> {
@@ -29,6 +36,7 @@ public class ProductSpecification {
 
             predicates.add(root.get("status").in(PUBLIC_VISIBLE_STATUSES));
             predicates.add(cb.isNull(root.get("deletedAt")));
+            predicates.add(cb.not(hasActiveTransaction(root, query, cb)));
 
             if (filter == null) {
                 return cb.and(predicates.toArray(new Predicate[0]));
@@ -153,5 +161,20 @@ public class ProductSpecification {
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    private static Predicate hasActiveTransaction(
+            Root<Product> root,
+            jakarta.persistence.criteria.CriteriaQuery<?> query,
+            jakarta.persistence.criteria.CriteriaBuilder cb
+    ) {
+        Subquery<Long> orderSubquery = query.subquery(Long.class);
+        Root<Order> orderRoot = orderSubquery.from(Order.class);
+        orderSubquery.select(cb.literal(1L))
+                .where(
+                        cb.equal(orderRoot.get("product").get("id"), root.get("id")),
+                        orderRoot.get("status").in(ACTIVE_TRANSACTION_STATUSES)
+                );
+        return cb.exists(orderSubquery);
     }
 }

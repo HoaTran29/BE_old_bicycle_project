@@ -35,6 +35,7 @@ public class ProductResponse {
     private String frameMaterialName;
     private List<ImageInfo> images;
     private boolean isVerified;
+    private boolean lockedForTransaction;
     private InspectionInfo inspection;
 
     @Data

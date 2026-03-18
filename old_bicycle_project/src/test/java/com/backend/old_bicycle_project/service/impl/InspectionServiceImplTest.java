@@ -142,4 +142,13 @@ class InspectionServiceImplTest {
         assertThat(result.getAverageScore()).isEqualByComparingTo("4.4");
         assertThat(result.getRecentInspections()).hasSize(1);
     }
+
+    @Test
+    void getInspectionByProductIdReturnsNullWhenProductHasNoInspectionYet() {
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(java.util.Optional.empty());
+
+        var result = inspectionService.getInspectionByProductId(product.getId());
+
+        assertThat(result).isNull();
+    }
 }

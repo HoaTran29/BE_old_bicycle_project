@@ -121,9 +121,9 @@ public class InspectionServiceImpl implements InspectionService {
 
     @Override
     public InspectionResponseDTO getInspectionByProductId(UUID productId) {
-        Inspection inspection = inspectionRepository.findByProductId(productId)
-                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
-        return mapToDTO(inspection);
+        return inspectionRepository.findByProductId(productId)
+                .map(this::mapToDTO)
+                .orElse(null);
     }
 
     @Override

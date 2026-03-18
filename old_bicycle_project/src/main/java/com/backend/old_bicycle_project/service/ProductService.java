@@ -89,6 +89,14 @@ public class ProductService {
         return toResponse(product);
     }
 
+    public ProductResponse getMineById(UUID id, User currentUser) {
+        Product product = findActiveProductById(id);
+        if (!product.getSeller().getId().equals(currentUser.getId())) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
+        return toResponse(product);
+    }
+
     @Transactional
     public ProductResponse create(ProductCreateRequest request, List<MultipartFile> images, User seller) {
         validateRequiredTechnicalFields(request.getFrameSize(), request.getWheelSize());
@@ -308,6 +316,7 @@ public class ProductService {
                 .frameMaterialName(product.getFrameMaterial() != null ? product.getFrameMaterial().getName() : null)
                 .images(imageInfos)
                 .isVerified(verified)
+                .lockedForTransaction(hasActiveTransaction(product.getId()))
                 .inspection(inspectionInfo)
                 .build();
     }
@@ -408,5 +417,9 @@ public class ProductService {
                 && product.getStatus() != ProductStatus.sold
                 && product.getStatus() != ProductStatus.hidden
                 && product.getStatus() != ProductStatus.pending;
+    }
+
+    private boolean hasActiveTransaction(UUID productId) {
+        return orderRepository.existsByProductIdAndStatusIn(productId, ACTIVE_TRANSACTION_STATUSES);
     }
 }

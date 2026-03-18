@@ -148,6 +148,20 @@ class ProductServiceTest {
     }
 
     @Test
+    void getMineByIdReturnsOwnedPendingProductForSellerEditFlow() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.pending);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.getMineById(product.getId(), seller);
+
+        assertThat(response.getId()).isEqualTo(product.getId());
+        assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
+    }
+
+    @Test
     void hideMovesOwnedProductToHiddenWithoutSoftDeleting() {
         User seller = seller();
         Product product = product(seller, ProductStatus.active);
@@ -256,6 +270,20 @@ class ProductServiceTest {
         assertThat(response.isVerified()).isTrue();
         assertThat(response.getInspection()).isNotNull();
         assertThat(response.getInspection().getReportFileUrl()).isEqualTo("https://cdn.test/report.pdf");
+    }
+
+    @Test
+    void getByIdMarksProductAsLockedWhenThereIsAnActiveTransaction() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+        when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), anyList())).thenReturn(true);
+
+        ProductResponse response = productService.getById(product.getId());
+
+        assertThat(response.isLockedForTransaction()).isTrue();
     }
 
     @Test

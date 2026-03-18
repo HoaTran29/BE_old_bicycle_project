@@ -108,6 +108,17 @@ public class ProductController {
                 .build();
     }
 
+    @GetMapping("/my/{id}")
+    @PreAuthorize("hasRole('SELLER')")
+    public ApiResponse<ProductResponse> getMyProductById(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        return ApiResponse.<ProductResponse>builder()
+                .result(productService.getMineById(id, currentUser))
+                .build();
+    }
+
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('SELLER')")
     public ApiResponse<ProductResponse> createProduct(
