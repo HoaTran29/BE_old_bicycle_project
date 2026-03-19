@@ -32,7 +32,9 @@ public enum ErrorCode {
     EMAIL_NOT_VERIFIED(1024, "Please verify your email before logging in", HttpStatus.FORBIDDEN),
     SELF_STATUS_CHANGE_NOT_ALLOWED(1025, "Admin cannot change their own status", HttpStatus.BAD_REQUEST),
     REFERENCE_DATA_IN_USE(1026, "Reference data is being used and cannot be deleted", HttpStatus.BAD_REQUEST),
-    CATEGORY_HIERARCHY_INVALID(1027, "Invalid category hierarchy", HttpStatus.BAD_REQUEST);
+    CATEGORY_HIERARCHY_INVALID(1027, "Invalid category hierarchy", HttpStatus.BAD_REQUEST),
+    PAYOUT_NOT_READY(1028, "Payout is not ready for this action", HttpStatus.BAD_REQUEST),
+    PAYOUT_REFERENCE_REQUIRED(1029, "Bank reference is required to complete this payout", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

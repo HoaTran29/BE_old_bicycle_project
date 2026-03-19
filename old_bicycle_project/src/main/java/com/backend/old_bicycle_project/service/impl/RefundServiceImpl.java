@@ -6,6 +6,7 @@ import com.backend.old_bicycle_project.dto.request.RefundReviewRequestDTO;
 import com.backend.old_bicycle_project.dto.response.AdminRefundResponseDTO;
 import com.backend.old_bicycle_project.dto.response.RefundResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
+import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Payment;
 import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
@@ -17,17 +18,18 @@ import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
 import com.backend.old_bicycle_project.entity.enums.RefundStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
+import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
-import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
+import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.RefundService;
 import com.backend.old_bicycle_project.specification.RefundRequestSpecification;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +48,7 @@ public class RefundServiceImpl implements RefundService {
     private final PaymentRepository paymentRepository;
     private final InspectionRepository inspectionRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final PayoutService payoutService;
 
     @Override
     @Transactional
@@ -109,20 +112,15 @@ public class RefundServiceImpl implements RefundService {
         switch (requestDTO.getStatus()) {
             case approved -> approveRefund(refundRequest, order, currentUser, requestDTO);
             case rejected -> rejectRefund(refundRequest, order, currentUser, requestDTO);
-            case completed -> completeRefund(refundRequest, order, payment, currentUser, requestDTO);
+            case completed -> completeRefund(refundRequest, currentUser, requestDTO);
             default -> throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
         refundRequestRepository.save(refundRequest);
-        paymentRepository.save(payment);
-        orderRepository.save(order);
-
-        publishOrderNotification(
-                refundRequest.getRequester().getId(),
-                "Cập nhật yêu cầu hoàn tiền",
-                "Admin đã cập nhật trạng thái yêu cầu hoàn tiền của bạn: " + refundRequest.getStatus().name(),
-                "{\"orderId\":\"" + order.getId() + "\",\"refundId\":\"" + refundRequest.getId() + "\"}"
-        );
+        if (refundRequest.getStatus() != RefundStatus.completed) {
+            paymentRepository.save(payment);
+            orderRepository.save(order);
+        }
 
         return mapToDTO(refundRequest);
     }
@@ -166,7 +164,9 @@ public class RefundServiceImpl implements RefundService {
         refundRequest.setAdminNote(requestDTO.getAdminNote());
         refundRequest.setReviewedBy(currentUser);
         refundRequest.setReviewedAt(LocalDateTime.now());
-        order.setFundingStatus(OrderFundingStatus.refund_pending);
+        order.setFundingStatus(OrderFundingStatus.refund_pending_transfer);
+
+        payoutService.ensureRefundPayout(refundRequest);
     }
 
     private void rejectRefund(
@@ -184,12 +184,17 @@ public class RefundServiceImpl implements RefundService {
         refundRequest.setReviewedBy(currentUser);
         refundRequest.setReviewedAt(LocalDateTime.now());
         order.setFundingStatus(OrderFundingStatus.held);
+
+        publishOrderNotification(
+                refundRequest.getRequester().getId(),
+                "Yêu cầu hoàn tiền bị từ chối",
+                "Admin đã từ chối yêu cầu hoàn tiền của bạn. Hãy xem ghi chú để biết thêm chi tiết.",
+                "{\"orderId\":\"" + order.getId() + "\",\"refundId\":\"" + refundRequest.getId() + "\"}"
+        );
     }
 
     private void completeRefund(
             RefundRequest refundRequest,
-            Order order,
-            Payment payment,
             User currentUser,
             RefundReviewRequestDTO requestDTO
     ) {
@@ -197,19 +202,8 @@ public class RefundServiceImpl implements RefundService {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
-        refundRequest.setStatus(RefundStatus.completed);
-        refundRequest.setAdminNote(requestDTO.getAdminNote());
-        refundRequest.setRefundReference(requestDTO.getRefundReference());
-        refundRequest.setReviewedBy(currentUser);
-        refundRequest.setReviewedAt(refundRequest.getReviewedAt() != null ? refundRequest.getReviewedAt() : LocalDateTime.now());
-        refundRequest.setProcessedAt(LocalDateTime.now());
-
-        payment.setStatus(PaymentStatus.refunded);
-
-        order.setStatus(OrderStatus.cancelled);
-        order.setFundingStatus(OrderFundingStatus.refunded);
-        order.setPaidAmount(BigDecimal.ZERO);
-        order.setRemainingAmount(order.getTotalAmount());
+        Payout payout = payoutService.ensureRefundPayout(refundRequest);
+        payoutService.completeRefundPayout(payout, currentUser, requestDTO.getRefundReference(), requestDTO.getAdminNote());
     }
 
     private void publishOrderNotification(UUID userId, String title, String content, String metadata) {
@@ -272,9 +266,9 @@ public class RefundServiceImpl implements RefundService {
                 .reviewedAt(refundRequest.getReviewedAt())
                 .processedAt(refundRequest.getProcessedAt())
                 .createdAt(refundRequest.getCreatedAt())
+                .paymentMethod(order != null ? order.getPaymentMethod() : null)
                 .orderStatus(order != null ? order.getStatus() : null)
                 .fundingStatus(order != null ? order.getFundingStatus() : null)
-                .paymentMethod(order != null ? order.getPaymentMethod() : null)
                 .build();
     }
 }

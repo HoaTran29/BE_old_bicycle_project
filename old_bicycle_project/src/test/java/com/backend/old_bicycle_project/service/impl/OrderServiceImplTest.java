@@ -3,17 +3,21 @@ package com.backend.old_bicycle_project.service.impl;
 import com.backend.old_bicycle_project.dto.request.OrderCreateRequestDTO;
 import com.backend.old_bicycle_project.dto.response.OrderResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
+import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
+import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
+import com.backend.old_bicycle_project.entity.enums.PayoutType;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
+import com.backend.old_bicycle_project.service.PayoutService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -44,6 +48,9 @@ class OrderServiceImplTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private PayoutService payoutService;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -154,11 +161,18 @@ class OrderServiceImplTest {
         when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(payoutService.ensureSellerReleasePayout(order)).thenReturn(Payout.builder()
+                .id(UUID.randomUUID())
+                .type(PayoutType.seller_release)
+                .status(PayoutStatus.pending_transfer)
+                .order(order)
+                .recipient(seller)
+                .build());
 
         OrderResponseDTO response = orderService.confirmReceived(order.getId(), buyer);
 
         assertThat(response.getStatus()).isEqualTo(OrderStatus.completed);
-        assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.released);
+        assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.seller_payout_pending);
         assertThat(response.getPaidAmount()).isEqualByComparingTo("18000000");
         assertThat(response.getRemainingAmount()).isEqualByComparingTo("0");
         assertThat(product.getStatus()).isEqualTo(ProductStatus.sold);

@@ -105,6 +105,8 @@ public class SecurityConfig {
                                                 .hasAnyRole("SELLER", "ADMIN")
                                                 .requestMatchers(HttpMethod.POST, "/api/inspections/evaluate/*")
                                                 .hasAnyRole("INSPECTOR", "ADMIN")
+                                                .requestMatchers(HttpMethod.POST, "/api/inspections/report/*")
+                                                .hasAnyRole("INSPECTOR", "ADMIN")
                                                 .requestMatchers(HttpMethod.GET,
                                                                 "/api/inspections/dashboard",
                                                                 "/api/inspections/requests",
@@ -127,6 +129,9 @@ public class SecurityConfig {
                                                 // ===== Buyer & Seller =====
                                                 .requestMatchers("/api/orders/**")
                                                 .hasAnyRole("BUYER", "SELLER", "ADMIN")
+
+                                                .requestMatchers("/api/payout-profiles/**")
+                                                .authenticated()
 
                                                 // ===== Authenticated (any role) =====
                                                 .anyRequest().authenticated())

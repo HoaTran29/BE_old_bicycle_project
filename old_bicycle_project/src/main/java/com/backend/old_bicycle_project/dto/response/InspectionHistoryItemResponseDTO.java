@@ -27,6 +27,7 @@ public class InspectionHistoryItemResponseDTO {
     private String inspectorName;
     private BigDecimal overallScore;
     private Boolean passed;
+    private String reportFileUrl;
     private LocalDateTime requestedAt;
     private LocalDateTime evaluatedAt;
     private LocalDateTime validUntil;

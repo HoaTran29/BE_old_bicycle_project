@@ -11,10 +11,12 @@ import com.backend.old_bicycle_project.service.InspectionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 
@@ -26,14 +28,14 @@ public class InspectionController {
     private final InspectionService inspectionService;
 
     @PostMapping("/request/{productId}")
-    @PreAuthorize("hasAnyRole('SELLER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<InspectionResponseDTO>> requestInspection(
             @PathVariable UUID productId,
             @AuthenticationPrincipal User currentUser) {
         InspectionResponseDTO responseDTO = inspectionService.requestInspection(productId, currentUser.getId());
         return ResponseEntity.ok(ApiResponse.<InspectionResponseDTO>builder()
                 .code(200)
-                .message("Inspection requested successfully")
+                .message("Product routed to inspection successfully")
                 .result(responseDTO)
                 .build());
     }
@@ -61,6 +63,21 @@ public class InspectionController {
         return ResponseEntity.ok(ApiResponse.<InspectionResponseDTO>builder()
                 .code(200)
                 .message("Inspection fetched successfully")
+                .result(responseDTO)
+                .build());
+    }
+
+    @PostMapping(value = "/report/{productId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('INSPECTOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<InspectionResponseDTO>> uploadInspectionReport(
+            @PathVariable UUID productId,
+            @AuthenticationPrincipal User currentUser,
+            @RequestPart("reportFile") MultipartFile reportFile) {
+        InspectionResponseDTO responseDTO =
+                inspectionService.uploadInspectionReport(productId, currentUser.getId(), reportFile);
+        return ResponseEntity.ok(ApiResponse.<InspectionResponseDTO>builder()
+                .code(200)
+                .message("Inspection report uploaded successfully")
                 .result(responseDTO)
                 .build());
     }

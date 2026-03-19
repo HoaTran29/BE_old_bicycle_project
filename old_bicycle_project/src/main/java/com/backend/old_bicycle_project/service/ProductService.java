@@ -50,21 +50,13 @@ public class ProductService {
 
     private static final List<ProductStatus> PUBLIC_VISIBLE_STATUSES = List.of(
             ProductStatus.active,
-            ProductStatus.pending_inspection,
-            ProductStatus.inspected_passed,
-            ProductStatus.inspected_failed
+            ProductStatus.inspected_passed
     );
     private static final List<OrderStatus> ACTIVE_TRANSACTION_STATUSES = List.of(
             OrderStatus.pending,
             OrderStatus.deposited,
             OrderStatus.awaiting_buyer_confirmation
     );
-    private static final List<ProductStatus> ADMIN_MODERATED_STATUSES = List.of(
-            ProductStatus.pending,
-            ProductStatus.active,
-            ProductStatus.hidden
-    );
-
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
     private final OrderRepository orderRepository;
@@ -85,10 +77,37 @@ public class ProductService {
 
     public ProductResponse getById(UUID id) {
         Product product = findActiveProductById(id);
-        if (!PUBLIC_VISIBLE_STATUSES.contains(product.getStatus())) {
+        Inspection inspection = inspectionRepository.findByProductId(product.getId()).orElse(null);
+        if (!PUBLIC_VISIBLE_STATUSES.contains(product.getStatus()) || !isInspectionCurrentlyValid(product, inspection)) {
             throw new AppException(ErrorCode.PRODUCT_NOT_FOUND);
         }
-        return toResponse(product);
+
+        List<ProductImage> productImages = productImageRepository.findByProductIdOrderByDisplayOrderAsc(product.getId());
+        if ((productImages == null || productImages.isEmpty()) && product.getImages() != null) {
+            productImages = product.getImages();
+        }
+
+        List<ProductResponse.ImageInfo> imageInfos = productImages.stream()
+                .map(img -> ProductResponse.ImageInfo.builder()
+                        .id(img.getId())
+                        .url(img.getUrl())
+                        .isPrimary(img.isPrimary())
+                        .displayOrder(img.getDisplayOrder())
+                        .build())
+                .collect(Collectors.toList());
+
+        User seller = product.getSeller();
+        ProductResponse.SellerInfo sellerInfo = seller != null
+                ? ProductResponse.SellerInfo.builder()
+                .id(seller.getId())
+                .firstName(seller.getFirstName())
+                .lastName(seller.getLastName())
+                .avatarUrl(seller.getAvatarUrl())
+                .phone(seller.getPhone())
+                .build()
+                : null;
+
+        return buildProductResponse(product, inspection, hasActiveTransaction(product.getId()), imageInfos, sellerInfo);
     }
 
     public ProductResponse getMineById(UUID id, User currentUser) {
@@ -227,6 +246,7 @@ public class ProductService {
 
         product.setStatus(ProductStatus.pending);
         product.setExpiresAt(LocalDateTime.now().plusDays(30));
+        invalidateInspection(product);
         return toResponse(productRepository.save(product));
     }
 
@@ -247,15 +267,26 @@ public class ProductService {
 
     @Transactional
     public ProductResponse changeStatus(UUID id, ProductStatus newStatus) {
-        if (!ADMIN_MODERATED_STATUSES.contains(newStatus)) {
+        Product product = findActiveProductById(id);
+        if (product.getStatus() == ProductStatus.sold) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
-        Product product = findActiveProductById(id);
-        if (product.getStatus() == ProductStatus.sold
-                || product.getStatus() == ProductStatus.pending_inspection
-                || product.getStatus() == ProductStatus.inspected_passed
-                || product.getStatus() == ProductStatus.inspected_failed) {
+        if (newStatus == ProductStatus.hidden) {
+            product.setStatus(ProductStatus.hidden);
+            return toResponse(productRepository.save(product));
+        }
+
+        if (newStatus == ProductStatus.active) {
+            Inspection inspection = inspectionRepository.findByProductId(product.getId()).orElse(null);
+            if (!isInspectionCurrentlyValid(product, inspection)) {
+                throw new AppException(ErrorCode.INVALID_STATUS);
+            }
+            product.setStatus(ProductStatus.active);
+            return toResponse(productRepository.save(product));
+        }
+
+        if (newStatus != ProductStatus.pending) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 

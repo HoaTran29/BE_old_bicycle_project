@@ -1,5 +1,6 @@
 package com.backend.old_bicycle_project.service.impl;
 
+import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.InspectionEvaluationDTO;
 import com.backend.old_bicycle_project.dto.response.InspectionDashboardResponseDTO;
 import com.backend.old_bicycle_project.dto.response.InspectionHistoryItemResponseDTO;
@@ -9,20 +10,25 @@ import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.ProductImage;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
+import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
+import com.backend.old_bicycle_project.service.StorageService;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -31,6 +37,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,11 +55,18 @@ class InspectionServiceImplTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private StorageService storageService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private InspectionServiceImpl inspectionService;
 
     private User seller;
     private User inspector;
+    private User admin;
     private Product product;
     private Inspection inspection;
 
@@ -71,6 +85,13 @@ class InspectionServiceImplTest {
                 .firstName("Khanh")
                 .lastName("Pham")
                 .role(AppRole.inspector)
+                .build();
+
+        admin = User.builder()
+                .id(UUID.randomUUID())
+                .firstName("Admin")
+                .lastName("Tran")
+                .role(AppRole.admin)
                 .build();
 
         product = Product.builder()
@@ -186,6 +207,32 @@ class InspectionServiceImplTest {
     }
 
     @Test
+    void requestInspectionAllowsAdminToRoutePendingProductIntoInspectionQueue() {
+        product.setStatus(ProductStatus.pending);
+
+        when(productRepository.findById(product.getId())).thenReturn(java.util.Optional.of(product));
+        when(userRepository.findById(admin.getId())).thenReturn(java.util.Optional.of(admin));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(java.util.Optional.empty());
+        when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> {
+            Inspection savedInspection = invocation.getArgument(0);
+            if (savedInspection.getId() == null) {
+                savedInspection.setId(UUID.randomUUID());
+            }
+            return savedInspection;
+        });
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = inspectionService.requestInspection(product.getId(), admin.getId());
+
+        assertThat(result.getProductId()).isEqualTo(product.getId());
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.pending_inspection);
+        ArgumentCaptor<NotificationEvent> eventCaptor = ArgumentCaptor.forClass(NotificationEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getUserId()).isEqualTo(seller.getId());
+        assertThat(eventCaptor.getValue().getType()).isEqualTo(NotificationType.inspection);
+    }
+
+    @Test
     void evaluateInspectionCreatesMissingInspectionRowForPendingRequest() {
         InspectionEvaluationDTO dto = InspectionEvaluationDTO.builder()
                 .frameScore(4)
@@ -216,6 +263,33 @@ class InspectionServiceImplTest {
 
         assertThat(result.getInspectorId()).isEqualTo(inspector.getId());
         assertThat(result.getPassed()).isTrue();
-        assertThat(product.getStatus()).isEqualTo(ProductStatus.inspected_passed);
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.active);
+        ArgumentCaptor<NotificationEvent> eventCaptor = ArgumentCaptor.forClass(NotificationEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getUserId()).isEqualTo(seller.getId());
+        assertThat(eventCaptor.getValue().getType()).isEqualTo(NotificationType.inspection);
+    }
+
+    @Test
+    void uploadInspectionReportStoresReportUrlOnExistingInspection() {
+        MockMultipartFile reportFile = new MockMultipartFile(
+                "reportFile",
+                "inspection-report.pdf",
+                "application/pdf",
+                "sample-pdf".getBytes()
+        );
+        inspection.setReportFileUrl("https://cdn.test/old-report.pdf");
+
+        when(productRepository.findById(product.getId())).thenReturn(java.util.Optional.of(product));
+        when(userRepository.findById(inspector.getId())).thenReturn(java.util.Optional.of(inspector));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(java.util.Optional.of(inspection));
+        when(storageService.uploadFile(reportFile, "inspections/" + product.getId()))
+                .thenReturn("https://cdn.test/new-report.pdf");
+        when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = inspectionService.uploadInspectionReport(product.getId(), inspector.getId(), reportFile);
+
+        assertThat(result.getReportFileUrl()).isEqualTo("https://cdn.test/new-report.pdf");
+        verify(storageService).deleteFile("https://cdn.test/old-report.pdf");
     }
 }

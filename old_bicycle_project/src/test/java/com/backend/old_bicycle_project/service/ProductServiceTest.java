@@ -165,6 +165,20 @@ class ProductServiceTest {
     }
 
     @Test
+    void getByIdRejectsActiveProductWithoutValidInspection() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> productService.getById(product.getId()))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.PRODUCT_NOT_FOUND);
+    }
+
+    @Test
     void getMineByIdReturnsOwnedPendingProductForSellerEditFlow() {
         User seller = seller();
         Product product = product(seller, ProductStatus.pending);
@@ -200,15 +214,24 @@ class ProductServiceTest {
         Product product = product(seller, ProductStatus.hidden);
         LocalDateTime previousExpiry = LocalDateTime.now().minusDays(1);
         product.setExpiresAt(previousExpiry);
+        Inspection inspection = Inspection.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .passed(true)
+                .validUntil(LocalDateTime.now().plusDays(5))
+                .build();
 
         when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.of(inspection));
+        when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ProductResponse response = productService.show(product.getId(), seller);
 
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
         assertThat(product.getExpiresAt()).isAfter(previousExpiry);
+        assertThat(inspection.getPassed()).isFalse();
+        assertThat(inspection.getValidUntil()).isNotNull();
         verify(productRepository).save(product);
     }
 
@@ -293,9 +316,15 @@ class ProductServiceTest {
     void getByIdMarksProductAsLockedWhenThereIsAnActiveTransaction() {
         User seller = seller();
         Product product = product(seller, ProductStatus.active);
+        Inspection inspection = Inspection.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .passed(true)
+                .validUntil(LocalDateTime.now().plusDays(2))
+                .build();
 
         when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
-        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.of(inspection));
         when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), anyList())).thenReturn(true);
 
         ProductResponse response = productService.getById(product.getId());
@@ -330,11 +359,12 @@ class ProductServiceTest {
     }
 
     @Test
-    void changeStatusRejectsProductsOutsideAdminModerationStatuses() {
+    void changeStatusRejectsDirectActivationWithoutValidInspection() {
         User seller = seller();
-        Product product = product(seller, ProductStatus.sold);
+        Product product = product(seller, ProductStatus.pending);
 
         when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> productService.changeStatus(product.getId(), ProductStatus.active))
                 .isInstanceOf(AppException.class)

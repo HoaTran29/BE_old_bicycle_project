@@ -20,9 +20,7 @@ public class ProductSpecification {
 
     private static final List<ProductStatus> PUBLIC_VISIBLE_STATUSES = List.of(
             ProductStatus.active,
-            ProductStatus.pending_inspection,
-            ProductStatus.inspected_passed,
-            ProductStatus.inspected_failed
+            ProductStatus.inspected_passed
     );
     private static final List<OrderStatus> ACTIVE_TRANSACTION_STATUSES = List.of(
             OrderStatus.pending,
@@ -37,6 +35,7 @@ public class ProductSpecification {
             predicates.add(root.get("status").in(PUBLIC_VISIBLE_STATUSES));
             predicates.add(cb.isNull(root.get("deletedAt")));
             predicates.add(cb.not(hasActiveTransaction(root, query, cb)));
+            predicates.add(hasValidPassedInspection(root, query, cb));
 
             if (filter == null) {
                 return cb.and(predicates.toArray(new Predicate[0]));
@@ -97,15 +96,7 @@ public class ProductSpecification {
             }
 
             if (Boolean.TRUE.equals(filter.getHasInspection())) {
-                Subquery<Long> inspectionSubquery = query.subquery(Long.class);
-                Root<Inspection> inspectionRoot = inspectionSubquery.from(Inspection.class);
-                inspectionSubquery.select(cb.literal(1L))
-                        .where(
-                                cb.equal(inspectionRoot.get("product"), root),
-                                cb.isTrue(inspectionRoot.get("passed")),
-                                cb.greaterThan(inspectionRoot.get("validUntil"), LocalDateTime.now())
-                        );
-                predicates.add(cb.exists(inspectionSubquery));
+                predicates.add(hasValidPassedInspection(root, query, cb));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -176,5 +167,21 @@ public class ProductSpecification {
                         orderRoot.get("status").in(ACTIVE_TRANSACTION_STATUSES)
                 );
         return cb.exists(orderSubquery);
+    }
+
+    private static Predicate hasValidPassedInspection(
+            Root<Product> root,
+            jakarta.persistence.criteria.CriteriaQuery<?> query,
+            jakarta.persistence.criteria.CriteriaBuilder cb
+    ) {
+        Subquery<Long> inspectionSubquery = query.subquery(Long.class);
+        Root<Inspection> inspectionRoot = inspectionSubquery.from(Inspection.class);
+        inspectionSubquery.select(cb.literal(1L))
+                .where(
+                        cb.equal(inspectionRoot.get("product"), root),
+                        cb.isTrue(inspectionRoot.get("passed")),
+                        cb.greaterThan(inspectionRoot.get("validUntil"), LocalDateTime.now())
+                );
+        return cb.exists(inspectionSubquery);
     }
 }

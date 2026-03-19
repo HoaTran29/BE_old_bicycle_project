@@ -2,6 +2,7 @@ package com.backend.old_bicycle_project.security;
 
 import com.backend.old_bicycle_project.dto.response.AdminUserResponseDTO;
 import com.backend.old_bicycle_project.service.InspectionService;
+import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.RefundService;
 import com.backend.old_bicycle_project.service.AdminUserService;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -20,6 +23,8 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = "spring.flyway.enabled=false")
@@ -38,6 +43,9 @@ class SecurityConfigIntegrationTest {
 
     @MockBean
     private InspectionService inspectionService;
+
+    @MockBean
+    private PayoutService payoutService;
 
     @Test
     void anonymousUserCannotUpdateProfile() throws Exception {
@@ -101,6 +109,26 @@ class SecurityConfigIntegrationTest {
     }
 
     @Test
+    void anonymousUserCannotAccessOwnPayoutProfile() throws Exception {
+        mockMvc.perform(get("/api/payout-profiles/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "BUYER")
+    void authenticatedUserCanAccessOwnPayoutProfile() throws Exception {
+        mockMvc.perform(get("/api/payout-profiles/me"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "SELLER")
+    void nonAdminUserCannotAccessAdminPayouts() throws Exception {
+        mockMvc.perform(get("/api/admin/payouts"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @WithMockUser(roles = "BUYER")
     void buyerCannotAccessSellerOwnedProductDetail() throws Exception {
         mockMvc.perform(get("/api/products/my/11111111-1111-1111-1111-111111111111"))
@@ -117,6 +145,13 @@ class SecurityConfigIntegrationTest {
     @WithMockUser(roles = "BUYER")
     void buyerCannotAccessInspectionRequests() throws Exception {
         mockMvc.perform(get("/api/inspections/requests"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "SELLER")
+    void sellerCannotRouteProductToInspectionQueue() throws Exception {
+        mockMvc.perform(post("/api/inspections/request/11111111-1111-1111-1111-111111111111"))
                 .andExpect(status().isForbidden());
     }
 
@@ -160,6 +195,42 @@ class SecurityConfigIntegrationTest {
                 .thenReturn(org.springframework.data.domain.Page.empty());
 
         mockMvc.perform(get("/api/admin/refunds"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void adminUserCanAccessAdminPayouts() throws Exception {
+        when(payoutService.getAdminPayouts(isNull(), isNull(), isNull(), eq(0), eq(12)))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+
+        mockMvc.perform(get("/api/admin/payouts"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void adminUserCanRouteProductToInspectionQueue() throws Exception {
+        when(inspectionService.requestInspection(any(), any()))
+                .thenReturn(com.backend.old_bicycle_project.dto.response.InspectionResponseDTO.builder()
+                        .productId(java.util.UUID.randomUUID())
+                        .build());
+
+        com.backend.old_bicycle_project.entity.User admin = com.backend.old_bicycle_project.entity.User.builder()
+                .id(java.util.UUID.randomUUID())
+                .role(com.backend.old_bicycle_project.entity.enums.AppRole.admin)
+                .email("admin@test.dev")
+                .build();
+
+        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
+                admin,
+                "password",
+                AuthorityUtils.createAuthorityList("ROLE_ADMIN")
+        );
+
+        mockMvc.perform(
+                        patch("/api/admin/products/11111111-1111-1111-1111-111111111111/send-to-inspection")
+                                .with(authentication(authenticationToken))
+                )
                 .andExpect(status().isOk());
     }
 }

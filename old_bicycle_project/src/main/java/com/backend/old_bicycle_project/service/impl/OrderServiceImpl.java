@@ -4,12 +4,14 @@ import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.OrderCreateRequestDTO;
 import com.backend.old_bicycle_project.dto.response.OrderResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
+import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
+import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
@@ -18,6 +20,7 @@ import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.service.OrderService;
+import com.backend.old_bicycle_project.service.PayoutService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -35,6 +38,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final PayoutService payoutService;
 
     @Override
     @Transactional
@@ -161,7 +165,7 @@ public class OrderServiceImpl implements OrderService {
         publishOrderNotification(
                 order.getBuyer().getId(),
                 "Người bán đã báo giao xe",
-                "Hãy xác nhận bạn đã nhận xe để hệ thống giải ngân cho người bán.",
+                "Hãy xác nhận bạn đã nhận xe để hệ thống chuyển sang bước giải ngân cho người bán.",
                 "{\"orderId\":\"" + order.getId() + "\"}"
         );
 
@@ -180,18 +184,22 @@ public class OrderServiceImpl implements OrderService {
         }
 
         order.setStatus(OrderStatus.completed);
-        order.setFundingStatus(OrderFundingStatus.released);
+        order.setFundingStatus(OrderFundingStatus.seller_payout_pending);
         order.setPaidAmount(order.getTotalAmount());
         order.setRemainingAmount(BigDecimal.ZERO);
         order.getProduct().setStatus(ProductStatus.sold);
         productRepository.save(order.getProduct());
         order = orderRepository.save(order);
 
+        Payout payout = payoutService.ensureSellerReleasePayout(order);
+
         publishOrderNotification(
                 order.getSeller().getId(),
                 "Người mua đã xác nhận nhận xe",
-                "Giao dịch đã được hoàn tất và hệ thống đã giải ngân cho bạn.",
-                "{\"orderId\":\"" + order.getId() + "\"}"
+                payout.getStatus() == PayoutStatus.profile_required
+                        ? "Giao dịch đã hoàn tất. Hãy cập nhật payout profile để nhận khoản cọc."
+                        : "Giao dịch đã hoàn tất. Khoản cọc đang chờ admin chuyển khoản thủ công cho bạn.",
+                "{\"orderId\":\"" + order.getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
         );
 
         return mapToDTO(order);
@@ -215,6 +223,8 @@ public class OrderServiceImpl implements OrderService {
                 || order.getStatus() == OrderStatus.awaiting_buyer_confirmation
                 || order.getFundingStatus() == OrderFundingStatus.held
                 || order.getFundingStatus() == OrderFundingStatus.refund_pending
+                || order.getFundingStatus() == OrderFundingStatus.refund_pending_transfer
+                || order.getFundingStatus() == OrderFundingStatus.seller_payout_pending
                 || order.getFundingStatus() == OrderFundingStatus.released
                 || order.getFundingStatus() == OrderFundingStatus.refunded) {
             throw new AppException(ErrorCode.INVALID_STATUS);

@@ -2,7 +2,10 @@ package com.backend.old_bicycle_project.controller;
 
 import com.backend.old_bicycle_project.dto.product.ProductResponse;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
+import com.backend.old_bicycle_project.dto.response.InspectionResponseDTO;
+import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
+import com.backend.old_bicycle_project.service.InspectionService;
 import com.backend.old_bicycle_project.service.ProductService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +27,9 @@ class AdminProductControllerTest {
 
     @Mock
     private ProductService productService;
+
+    @Mock
+    private InspectionService inspectionService;
 
     @InjectMocks
     private AdminProductController adminProductController;
@@ -88,5 +94,22 @@ class AdminProductControllerTest {
 
         assertThat(response.getResult()).isSameAs(product);
         verify(productService).changeStatus(productId, ProductStatus.hidden);
+    }
+
+    @Test
+    void sendAdminProductToInspectionDelegatesToInspectionService() {
+        UUID productId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User admin = User.builder().id(adminId).build();
+        InspectionResponseDTO inspection = InspectionResponseDTO.builder()
+                .id(UUID.randomUUID())
+                .productId(productId)
+                .build();
+        when(inspectionService.requestInspection(productId, adminId)).thenReturn(inspection);
+
+        ApiResponse<InspectionResponseDTO> response = adminProductController.sendAdminProductToInspection(productId, admin);
+
+        assertThat(response.getResult()).isSameAs(inspection);
+        verify(inspectionService).requestInspection(productId, adminId);
     }
 }
