@@ -37,8 +37,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -77,8 +80,7 @@ public class ProductService {
         Sort sort = buildSort(filter);
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        return productRepository.findAll(spec, pageable)
-                .map(this::toResponse);
+        return mapProductPage(productRepository.findAll(spec, pageable));
     }
 
     public ProductResponse getById(UUID id) {
@@ -95,6 +97,10 @@ public class ProductService {
             throw new AppException(ErrorCode.FORBIDDEN);
         }
         return toResponse(product);
+    }
+
+    public ProductResponse getAdminById(UUID id) {
+        return toResponse(findActiveProductById(id));
     }
 
     @Transactional
@@ -226,8 +232,7 @@ public class ProductService {
 
     public Page<ProductResponse> getMyProducts(User currentUser, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return productRepository.findBySellerIdAndDeletedAtIsNull(currentUser.getId(), pageable)
-                .map(this::toResponse);
+        return mapProductPage(productRepository.findBySellerIdAndDeletedAtIsNull(currentUser.getId(), pageable));
     }
 
     public Page<ProductResponse> getAllForAdmin(ProductStatus status, int page, int size) {
@@ -237,7 +242,7 @@ public class ProductService {
     public Page<ProductResponse> getAllForAdmin(ProductStatus status, UUID sellerId, String keyword, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Specification<Product> specification = ProductSpecification.fromAdminFilter(status, sellerId, keyword);
-        return productRepository.findAll(specification, pageable).map(this::toResponse);
+        return mapProductPage(productRepository.findAll(specification, pageable));
     }
 
     @Transactional
@@ -259,16 +264,18 @@ public class ProductService {
     }
 
     public ProductResponse toResponse(Product product) {
-        List<ProductResponse.ImageInfo> imageInfos = product.getImages() != null
-                ? product.getImages().stream()
+        List<ProductImage> productImages = productImageRepository.findByProductIdOrderByDisplayOrderAsc(product.getId());
+        if ((productImages == null || productImages.isEmpty()) && product.getImages() != null) {
+            productImages = product.getImages();
+        }
+        List<ProductResponse.ImageInfo> imageInfos = productImages.stream()
                 .map(img -> ProductResponse.ImageInfo.builder()
                         .id(img.getId())
                         .url(img.getUrl())
                         .isPrimary(img.isPrimary())
                         .displayOrder(img.getDisplayOrder())
                         .build())
-                .collect(Collectors.toList())
-                : List.of();
+                .collect(Collectors.toList());
 
         User seller = product.getSeller();
         ProductResponse.SellerInfo sellerInfo = seller != null
@@ -282,6 +289,75 @@ public class ProductService {
                 : null;
 
         Inspection inspection = inspectionRepository.findByProductId(product.getId()).orElse(null);
+        return buildProductResponse(product, inspection, hasActiveTransaction(product.getId()), imageInfos, sellerInfo);
+    }
+
+    private Page<ProductResponse> mapProductPage(Page<Product> productsPage) {
+        if (productsPage.isEmpty()) {
+            return productsPage.map(this::toResponse);
+        }
+
+        List<Product> products = productsPage.getContent();
+        List<UUID> productIds = products.stream()
+                .map(Product::getId)
+                .toList();
+
+        Map<UUID, Inspection> inspectionsByProductId = inspectionRepository.findByProductIdIn(productIds).stream()
+                .collect(Collectors.toMap(
+                        inspection -> inspection.getProduct().getId(),
+                        Function.identity(),
+                        (left, right) -> left
+                ));
+
+        Map<UUID, List<ProductImage>> imagesByProductId = productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(productIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        image -> image.getProduct().getId(),
+                        Collectors.toList()
+                ));
+
+        HashSet<UUID> lockedProductIds = new HashSet<>(
+                orderRepository.findLockedProductIdsByProductIdsAndStatuses(productIds, ACTIVE_TRANSACTION_STATUSES)
+        );
+
+        return productsPage.map(product -> {
+            List<ProductResponse.ImageInfo> imageInfos = imagesByProductId.getOrDefault(product.getId(), List.of()).stream()
+                    .map(img -> ProductResponse.ImageInfo.builder()
+                            .id(img.getId())
+                            .url(img.getUrl())
+                            .isPrimary(img.isPrimary())
+                            .displayOrder(img.getDisplayOrder())
+                            .build())
+                    .collect(Collectors.toList());
+
+            User seller = product.getSeller();
+            ProductResponse.SellerInfo sellerInfo = seller != null
+                    ? ProductResponse.SellerInfo.builder()
+                    .id(seller.getId())
+                    .firstName(seller.getFirstName())
+                    .lastName(seller.getLastName())
+                    .avatarUrl(seller.getAvatarUrl())
+                    .phone(seller.getPhone())
+                    .build()
+                    : null;
+
+            return buildProductResponse(
+                    product,
+                    inspectionsByProductId.get(product.getId()),
+                    lockedProductIds.contains(product.getId()),
+                    imageInfos,
+                    sellerInfo
+            );
+        });
+    }
+
+    private ProductResponse buildProductResponse(
+            Product product,
+            Inspection inspection,
+            boolean lockedForTransaction,
+            List<ProductResponse.ImageInfo> imageInfos,
+            ProductResponse.SellerInfo sellerInfo
+    ) {
         boolean verified = isInspectionCurrentlyValid(product, inspection);
         ProductResponse.InspectionInfo inspectionInfo = inspection != null
                 ? ProductResponse.InspectionInfo.builder()
@@ -316,7 +392,7 @@ public class ProductService {
                 .frameMaterialName(product.getFrameMaterial() != null ? product.getFrameMaterial().getName() : null)
                 .images(imageInfos)
                 .isVerified(verified)
-                .lockedForTransaction(hasActiveTransaction(product.getId()))
+                .lockedForTransaction(lockedForTransaction)
                 .inspection(inspectionInfo)
                 .build();
     }

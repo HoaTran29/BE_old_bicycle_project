@@ -33,6 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -128,10 +130,26 @@ public class RefundServiceImpl implements RefundService {
     @Override
     public Page<AdminRefundResponseDTO> getAdminRefunds(String keyword, RefundStatus status, int page, int size) {
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return refundRequestRepository.findAll(
+        Page<RefundRequest> refundPage = refundRequestRepository.findAll(
                 RefundRequestSpecification.fromAdminFilter(keyword, status),
                 pageable
-        ).map(this::mapToAdminDTO);
+        );
+
+        Set<UUID> productIds = refundPage.getContent().stream()
+                .map(RefundRequest::getOrder)
+                .filter(order -> order != null && order.getProduct() != null)
+                .map(order -> order.getProduct().getId())
+                .collect(java.util.stream.Collectors.toSet());
+        Set<UUID> inspectedProductIds = productIds.isEmpty()
+                ? Set.of()
+                : new HashSet<>(inspectionRepository.findDistinctProductIdsWithInspection(productIds));
+
+        return refundPage.map(refundRequest -> mapToAdminDTO(
+                refundRequest,
+                refundRequest.getOrder() != null
+                        && refundRequest.getOrder().getProduct() != null
+                        && inspectedProductIds.contains(refundRequest.getOrder().getProduct().getId())
+        ));
     }
 
     private void approveRefund(
@@ -226,12 +244,9 @@ public class RefundServiceImpl implements RefundService {
                 .build();
     }
 
-    private AdminRefundResponseDTO mapToAdminDTO(RefundRequest refundRequest) {
+    private AdminRefundResponseDTO mapToAdminDTO(RefundRequest refundRequest, boolean hasInspection) {
         Order order = refundRequest.getOrder();
         Payment payment = refundRequest.getPayment();
-        boolean hasInspection = order != null
-                && order.getProduct() != null
-                && inspectionRepository.existsByProductId(order.getProduct().getId());
 
         return AdminRefundResponseDTO.builder()
                 .id(refundRequest.getId())

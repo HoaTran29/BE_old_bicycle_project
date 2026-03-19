@@ -7,12 +7,14 @@ import com.backend.old_bicycle_project.dto.response.InspectionRequestItemRespons
 import com.backend.old_bicycle_project.dto.response.InspectionResponseDTO;
 import com.backend.old_bicycle_project.entity.Inspection;
 import com.backend.old_bicycle_project.entity.Product;
+import com.backend.old_bicycle_project.entity.ProductImage;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
+import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.InspectionService;
@@ -29,7 +31,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +43,7 @@ public class InspectionServiceImpl implements InspectionService {
 
     private final InspectionRepository inspectionRepository;
     private final ProductRepository productRepository;
+    private final ProductImageRepository productImageRepository;
     private final UserRepository userRepository;
 
     @Override
@@ -133,8 +140,30 @@ public class InspectionServiceImpl implements InspectionService {
     @Transactional(readOnly = true)
     public Page<InspectionRequestItemResponseDTO> getInspectionRequests(String keyword, int page, int size) {
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").ascending());
-        return productRepository.findAll(ProductSpecification.fromInspectionRequestFilter(keyword), pageable)
-                .map(this::mapRequestItem);
+        Page<Product> requestPage = productRepository.findAll(ProductSpecification.fromInspectionRequestFilter(keyword), pageable);
+
+        if (requestPage.isEmpty()) {
+            return requestPage.map(product -> mapRequestItem(product, null, null));
+        }
+
+        Map<UUID, Inspection> inspectionsByProductId = inspectionRepository.findByProductIdIn(
+                        requestPage.getContent().stream().map(Product::getId).toList()
+                ).stream()
+                .collect(Collectors.toMap(
+                        inspection -> inspection.getProduct().getId(),
+                        Function.identity(),
+                        (left, right) -> left
+                ));
+
+        Map<UUID, String> primaryImageUrlsByProductId = resolvePrimaryImageUrls(
+                requestPage.getContent().stream().map(Product::getId).toList()
+        );
+
+        return requestPage.map(product -> mapRequestItem(
+                product,
+                inspectionsByProductId.get(product.getId()),
+                primaryImageUrlsByProductId.get(product.getId())
+        ));
     }
 
     @Override
@@ -142,8 +171,22 @@ public class InspectionServiceImpl implements InspectionService {
     public Page<InspectionHistoryItemResponseDTO> getInspectionHistory(User currentUser, String keyword, int page, int size) {
         UUID inspectorFilter = isAdmin(currentUser) ? null : currentUser.getId();
         PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
-        return inspectionRepository.findAll(InspectionSpecification.fromHistoryFilter(inspectorFilter, keyword), pageable)
-                .map(this::mapHistoryItem);
+        Page<Inspection> historyPage = inspectionRepository.findAll(InspectionSpecification.fromHistoryFilter(inspectorFilter, keyword), pageable);
+
+        if (historyPage.isEmpty()) {
+            return historyPage.map(inspection -> mapHistoryItem(inspection, null));
+        }
+
+        Map<UUID, String> primaryImageUrlsByProductId = resolvePrimaryImageUrls(
+                historyPage.getContent().stream()
+                        .map(inspection -> inspection.getProduct().getId())
+                        .toList()
+        );
+
+        return historyPage.map(inspection -> mapHistoryItem(
+                inspection,
+                primaryImageUrlsByProductId.get(inspection.getProduct().getId())
+        ));
     }
 
     @Override
@@ -205,16 +248,14 @@ public class InspectionServiceImpl implements InspectionService {
                 .build();
     }
 
-    private InspectionRequestItemResponseDTO mapRequestItem(Product product) {
-        Inspection inspection = inspectionRepository.findByProductId(product.getId()).orElse(null);
-
+    private InspectionRequestItemResponseDTO mapRequestItem(Product product, Inspection inspection, String productImageUrl) {
         return InspectionRequestItemResponseDTO.builder()
                 .inspectionId(inspection != null ? inspection.getId() : product.getId())
                 .productId(product.getId())
                 .productTitle(product.getTitle())
                 .productPrice(product.getPrice())
                 .province(product.getProvince())
-                .productImageUrl(resolvePrimaryImageUrl(product))
+                .productImageUrl(productImageUrl)
                 .sellerId(product.getSeller().getId())
                 .sellerName(product.getSeller().getFullName())
                 .sellerPhone(product.getSeller().getPhone())
@@ -224,7 +265,7 @@ public class InspectionServiceImpl implements InspectionService {
                 .build();
     }
 
-    private InspectionHistoryItemResponseDTO mapHistoryItem(Inspection inspection) {
+    private InspectionHistoryItemResponseDTO mapHistoryItem(Inspection inspection, String productImageUrl) {
         Product product = inspection.getProduct();
         User seller = product.getSeller();
         User inspector = inspection.getInspector();
@@ -235,7 +276,7 @@ public class InspectionServiceImpl implements InspectionService {
                 .productTitle(product.getTitle())
                 .productPrice(product.getPrice())
                 .province(product.getProvince())
-                .productImageUrl(resolvePrimaryImageUrl(product))
+                .productImageUrl(productImageUrl)
                 .sellerId(seller.getId())
                 .sellerName(seller.getFullName())
                 .sellerPhone(seller.getPhone())
@@ -249,12 +290,24 @@ public class InspectionServiceImpl implements InspectionService {
                 .build();
     }
 
-    private String resolvePrimaryImageUrl(Product product) {
-        if (product.getImages() == null || product.getImages().isEmpty()) {
+    private Map<UUID, String> resolvePrimaryImageUrls(List<UUID> productIds) {
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(productIds).stream()
+                .collect(Collectors.groupingBy(
+                        image -> image.getProduct().getId(),
+                        Collectors.collectingAndThen(Collectors.toList(), this::resolvePrimaryImageUrlFromList)
+                ));
+    }
+
+    private String resolvePrimaryImageUrlFromList(List<ProductImage> images) {
+        if (images.isEmpty()) {
             return null;
         }
 
-        return product.getImages().stream()
+        return images.stream()
                 .sorted((left, right) -> {
                     if (left.isPrimary() == right.isPrimary()) {
                         return Integer.compare(left.getDisplayOrder(), right.getDisplayOrder());
@@ -262,7 +315,7 @@ public class InspectionServiceImpl implements InspectionService {
                     return Boolean.compare(right.isPrimary(), left.isPrimary());
                 })
                 .findFirst()
-                .map(com.backend.old_bicycle_project.entity.ProductImage::getUrl)
+                .map(ProductImage::getUrl)
                 .orElse(null);
     }
 

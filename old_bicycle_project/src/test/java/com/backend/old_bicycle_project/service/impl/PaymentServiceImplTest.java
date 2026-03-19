@@ -367,6 +367,95 @@ class PaymentServiceImplTest {
     }
 
     @Test
+    void handleSepayWebhookFallsBackToTransferContentWhenCodeIsMissing() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        Payment payment = processingPayment(order, "OB-ORDER-STATIC-01");
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        when(paymentRepository.findByGatewayOrderCode("OB-ORDER-STATIC-01")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        paymentService.handleSepayWebhook("""
+                {
+                  "transferType": "in",
+                  "transferAmount": 2000000,
+                  "content": "Nội dung chuyển khoản: OB-ORDER-STATIC-01",
+                  "referenceCode": "TX-CONTENT-001"
+                }
+                """, "Apikey secret-key");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.success);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.deposited);
+        assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.held);
+    }
+
+    @Test
+    void handleSepayWebhookFallsBackToTransferContentWhenCodeDoesNotMatchPayment() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        Payment payment = processingPayment(order, "OB-ORDER-STATIC-02");
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        when(paymentRepository.findByGatewayOrderCode("UNRELATED-CODE")).thenReturn(Optional.empty());
+        when(paymentRepository.findByGatewayOrderCode("OB-ORDER-STATIC-02")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        paymentService.handleSepayWebhook("""
+                {
+                  "code": "UNRELATED-CODE",
+                  "transferType": "in",
+                  "transferAmount": 2000000,
+                  "content": "OB-ORDER-STATIC-02",
+                  "referenceCode": "TX-CONTENT-002"
+                }
+                """, "Apikey secret-key");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.success);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.deposited);
+    }
+
+    @Test
+    void handleSepayWebhookFallsBackToCompactTransferContentWhenGatewayCodeHasNoHyphens() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        Payment payment = processingPayment(order, "OB-827A3E1F5FF0-203655");
+        order.setRequiredUpfrontAmount(new BigDecimal("2000"));
+        order.setPaidAmount(BigDecimal.ZERO);
+        order.setRemainingAmount(new BigDecimal("10000000"));
+        payment.setAmount(new BigDecimal("2000"));
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        when(paymentRepository.findByGatewayOrderCode("OB-827A3E1F5FF0-203655")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        paymentService.handleSepayWebhook("""
+                {
+                  "gateway": "TPBank",
+                  "transactionDate": "2026-03-18 20:37:18",
+                  "accountNumber": "00000645722",
+                  "code": null,
+                  "content": "MBVCB.13423096331.6077BFTVG2XUCIK.OB827A3E1F5FF0203655.CT tu 9363565884 NGUYEN HOANG VIET DO toi 00000645722 NGUYEN HOANG VIET DO tai TPBANK",
+                  "transferType": "in",
+                  "description": "BankAPINotify MBVCB.13423096331.6077BFTVG2XUCIK.OB827A3E1F5FF0203655.CT tu 9363565884 NGUYEN HOANG VIET DO toi 00000645722 NGUYEN HOANG VIET DO tai TPBANK",
+                  "transferAmount": 2000,
+                  "referenceCode": "90IV602260770791"
+                }
+                """, "Apikey secret-key");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.success);
+        assertThat(payment.getTransactionReference()).isEqualTo("90IV602260770791");
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.deposited);
+        assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.held);
+    }
+
+    @Test
     void handleSepayWebhookRejectsInsufficientTransferAmount() {
         User buyer = user(AppRole.buyer, "buyer@test.dev");
         Order order = acceptedOrder(buyer);

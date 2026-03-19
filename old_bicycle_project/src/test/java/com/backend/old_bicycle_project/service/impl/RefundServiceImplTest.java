@@ -33,6 +33,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -172,7 +173,7 @@ class RefundServiceImplTest {
 
         when(refundRequestRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
                 .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(refundRequest)));
-        when(inspectionRepository.existsByProductId(product.getId())).thenReturn(true);
+        when(inspectionRepository.findDistinctProductIdsWithInspection(anyCollection())).thenReturn(List.of(product.getId()));
 
         org.springframework.data.domain.Page<AdminRefundResponseDTO> result = refundService.getAdminRefunds("trek", RefundStatus.pending, 0, 12);
 

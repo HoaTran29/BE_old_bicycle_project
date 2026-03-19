@@ -61,6 +61,21 @@ class AdminProductControllerTest {
     }
 
     @Test
+    void getAdminProductByIdDelegatesToAdminScopedDetailLookup() {
+        UUID productId = UUID.randomUUID();
+        ProductResponse product = ProductResponse.builder()
+                .id(productId)
+                .status(ProductStatus.pending)
+                .build();
+        when(productService.getAdminById(productId)).thenReturn(product);
+
+        ApiResponse<ProductResponse> response = adminProductController.getAdminProductById(productId);
+
+        assertThat(response.getResult()).isSameAs(product);
+        verify(productService).getAdminById(productId);
+    }
+
+    @Test
     void hideAdminProductDelegatesToHiddenStatusTransition() {
         UUID productId = UUID.randomUUID();
         ProductResponse product = ProductResponse.builder()

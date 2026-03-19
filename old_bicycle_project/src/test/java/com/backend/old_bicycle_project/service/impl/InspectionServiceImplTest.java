@@ -11,6 +11,7 @@ import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
+import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +41,9 @@ class InspectionServiceImplTest {
 
     @Mock
     private ProductRepository productRepository;
+
+    @Mock
+    private ProductImageRepository productImageRepository;
 
     @Mock
     private UserRepository userRepository;
@@ -76,12 +80,15 @@ class InspectionServiceImplTest {
                 .price(BigDecimal.valueOf(52000000))
                 .province("Ho Chi Minh")
                 .status(ProductStatus.pending_inspection)
-                .images(List.of(ProductImage.builder()
-                        .url("https://cdn.test/propel.jpg")
-                        .isPrimary(true)
-                        .displayOrder(0)
-                        .build()))
+                .images(new java.util.ArrayList<>())
                 .build();
+
+        product.getImages().add(ProductImage.builder()
+                .product(product)
+                .url("https://cdn.test/propel.jpg")
+                .isPrimary(true)
+                .displayOrder(0)
+                .build());
 
         inspection = Inspection.builder()
                 .id(UUID.randomUUID())
@@ -99,8 +106,10 @@ class InspectionServiceImplTest {
     void getInspectionRequestsReturnsPendingProducts() {
         when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(product)));
-        when(inspectionRepository.findByProductId(product.getId()))
-                .thenReturn(java.util.Optional.of(inspection));
+        when(inspectionRepository.findByProductIdIn(List.of(product.getId())))
+                .thenReturn(List.of(inspection));
+        when(productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(List.of(product.getId())))
+                .thenReturn(product.getImages());
 
         var result = inspectionService.getInspectionRequests("giant", 0, 10);
 
@@ -117,8 +126,10 @@ class InspectionServiceImplTest {
 
         when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(product)));
-        when(inspectionRepository.findByProductId(product.getId()))
-                .thenReturn(java.util.Optional.empty());
+        when(inspectionRepository.findByProductIdIn(List.of(product.getId())))
+                .thenReturn(List.of());
+        when(productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(List.of(product.getId())))
+                .thenReturn(product.getImages());
 
         var result = inspectionService.getInspectionRequests(null, 0, 10);
 
@@ -132,6 +143,8 @@ class InspectionServiceImplTest {
     void getInspectionHistoryReturnsMappedInspectionItems() {
         when(inspectionRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(inspection)));
+        when(productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(List.of(product.getId())))
+                .thenReturn(product.getImages());
 
         var result = inspectionService.getInspectionHistory(inspector, null, 0, 10);
 
@@ -151,6 +164,8 @@ class InspectionServiceImplTest {
         when(inspectionRepository.findAverageOverallScoreByInspectorId(inspector.getId())).thenReturn(BigDecimal.valueOf(4.4));
         when(inspectionRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(inspection)));
+        when(productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(List.of(product.getId())))
+                .thenReturn(product.getImages());
 
         InspectionDashboardResponseDTO result = inspectionService.getInspectionDashboard(inspector);
 

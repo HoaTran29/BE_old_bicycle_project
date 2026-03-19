@@ -37,6 +37,14 @@ public class AdminProductController {
                 .build();
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<ProductResponse> getAdminProductById(@PathVariable UUID id) {
+        return ApiResponse.<ProductResponse>builder()
+                .result(productService.getAdminById(id))
+                .build();
+    }
+
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<ProductResponse> updateAdminProductStatus(

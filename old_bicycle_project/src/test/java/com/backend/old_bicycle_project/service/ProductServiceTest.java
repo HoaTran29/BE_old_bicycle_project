@@ -39,6 +39,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -139,12 +140,28 @@ class ProductServiceTest {
 
         when(productRepository.findBySellerIdAndDeletedAtIsNull(eq(seller.getId()), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new PageImpl<>(List.of(product)));
-        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+        when(inspectionRepository.findByProductIdIn(anyCollection())).thenReturn(List.of());
+        when(productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(anyCollection())).thenReturn(List.of());
+        when(orderRepository.findLockedProductIdsByProductIdsAndStatuses(anyCollection(), anyCollection())).thenReturn(List.of());
 
         var page = productService.getMyProducts(seller, 0, 12);
 
         assertThat(page.getContent()).hasSize(1);
         assertThat(page.getContent().getFirst().getId()).isEqualTo(product.getId());
+    }
+
+    @Test
+    void getAdminByIdReturnsPendingProductForModeratorReview() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.pending);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.getAdminById(product.getId());
+
+        assertThat(response.getId()).isEqualTo(product.getId());
+        assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
     }
 
     @Test
