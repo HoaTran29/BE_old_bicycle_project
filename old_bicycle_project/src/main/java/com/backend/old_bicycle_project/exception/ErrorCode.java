@@ -34,7 +34,10 @@ public enum ErrorCode {
     REFERENCE_DATA_IN_USE(1026, "Reference data is being used and cannot be deleted", HttpStatus.BAD_REQUEST),
     CATEGORY_HIERARCHY_INVALID(1027, "Invalid category hierarchy", HttpStatus.BAD_REQUEST),
     PAYOUT_NOT_READY(1028, "Payout is not ready for this action", HttpStatus.BAD_REQUEST),
-    PAYOUT_REFERENCE_REQUIRED(1029, "Bank reference is required to complete this payout", HttpStatus.BAD_REQUEST);
+    PAYOUT_REFERENCE_REQUIRED(1029, "Bank reference is required to complete this payout", HttpStatus.BAD_REQUEST),
+    INVALID_CREDENTIALS(1030, "Email or password is incorrect", HttpStatus.UNAUTHORIZED),
+    ACCOUNT_INACTIVE(1031, "Your account is inactive. Please contact admin.", HttpStatus.FORBIDDEN),
+    ACCOUNT_BANNED(1032, "Your account has been banned. Please contact admin.", HttpStatus.FORBIDDEN);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

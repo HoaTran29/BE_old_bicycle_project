@@ -25,6 +25,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
@@ -214,6 +217,45 @@ class AuthServiceTest {
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.EMAIL_NOT_VERIFIED));
 
         verify(refreshTokenService).deleteAllByUser(user);
+    }
+
+    @Test
+    void loginRejectsInvalidCredentialsWithClearError() {
+        when(authenticationManager.authenticate(any()))
+                .thenThrow(new BadCredentialsException("Bad credentials"));
+
+        assertThatThrownBy(() -> authService.login(new com.backend.old_bicycle_project.dto.auth.LoginRequest() {{
+                    setEmail("buyer@test.dev");
+                    setPassword("WrongPassword1");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_CREDENTIALS));
+    }
+
+    @Test
+    void loginRejectsInactiveUserWithClearError() {
+        when(authenticationManager.authenticate(any()))
+                .thenThrow(new DisabledException("Account disabled"));
+
+        assertThatThrownBy(() -> authService.login(new com.backend.old_bicycle_project.dto.auth.LoginRequest() {{
+                    setEmail("seller.city@oldbicycle.dev");
+                    setPassword("Password1");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.ACCOUNT_INACTIVE));
+    }
+
+    @Test
+    void loginRejectsBannedUserWithClearError() {
+        when(authenticationManager.authenticate(any()))
+                .thenThrow(new LockedException("Account banned"));
+
+        assertThatThrownBy(() -> authService.login(new com.backend.old_bicycle_project.dto.auth.LoginRequest() {{
+                    setEmail("buyer.banned@oldbicycle.dev");
+                    setPassword("Password1");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.ACCOUNT_BANNED));
     }
 
     @Test

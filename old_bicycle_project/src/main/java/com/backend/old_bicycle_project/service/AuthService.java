@@ -21,9 +21,14 @@ import com.backend.old_bicycle_project.security.JwtTokenProvider;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -77,9 +82,22 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+        String normalizedEmail = request.getEmail() == null ? null : request.getEmail().trim();
+        Authentication authentication;
+
+        try {
+            authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword())
+            );
+        } catch (DisabledException exception) {
+            throw new AppException(ErrorCode.ACCOUNT_INACTIVE);
+        } catch (LockedException exception) {
+            throw new AppException(ErrorCode.ACCOUNT_BANNED);
+        } catch (BadCredentialsException | InternalAuthenticationServiceException exception) {
+            throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+        } catch (AuthenticationException exception) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
 
         User user = (User) authentication.getPrincipal();
         ensureUserVerified(user);
