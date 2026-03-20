@@ -1,5 +1,6 @@
 package com.backend.old_bicycle_project.controller;
 
+import com.backend.old_bicycle_project.dto.request.ReviewReplyRequestDTO;
 import com.backend.old_bicycle_project.dto.request.ReviewRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.ReviewResponseDTO;
@@ -33,6 +34,20 @@ public class ReviewController {
         return ResponseEntity.ok(ApiResponse.<ReviewResponseDTO>builder()
                 .code(200)
                 .message("Review submitted successfully")
+                .result(responseDTO)
+                .build());
+    }
+
+    @PutMapping("/api/reviews/{reviewId}/reply")
+    @PreAuthorize("hasRole('SELLER')")
+    public ResponseEntity<ApiResponse<ReviewResponseDTO>> replyToReview(
+            @PathVariable UUID reviewId,
+            @AuthenticationPrincipal User currentUser,
+            @RequestBody @Valid ReviewReplyRequestDTO requestDTO) {
+        ReviewResponseDTO responseDTO = reviewService.replyToReview(reviewId, currentUser.getId(), requestDTO);
+        return ResponseEntity.ok(ApiResponse.<ReviewResponseDTO>builder()
+                .code(200)
+                .message("Review reply saved successfully")
                 .result(responseDTO)
                 .build());
     }

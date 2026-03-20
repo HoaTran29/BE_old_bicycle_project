@@ -17,6 +17,7 @@ import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
+import com.backend.old_bicycle_project.repository.ReviewRepository;
 import com.backend.old_bicycle_project.service.PayoutService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,6 +48,9 @@ class OrderServiceImplTest {
     private ProductRepository productRepository;
 
     @Mock
+    private ReviewRepository reviewRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @Mock
@@ -75,6 +79,7 @@ class OrderServiceImplTest {
 
         when(productRepository.findById(product.getId())).thenReturn(java.util.Optional.of(product));
         when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), any(List.class))).thenReturn(false);
+        when(reviewRepository.existsByOrderId(any(UUID.class))).thenReturn(false);
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
             Order order = invocation.getArgument(0);
             order.setId(UUID.randomUUID());
@@ -124,6 +129,7 @@ class OrderServiceImplTest {
                 .build();
 
         when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
+        when(reviewRepository.existsByOrderId(order.getId())).thenReturn(false);
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         OrderResponseDTO response = orderService.completeOrder(order.getId(), seller);
@@ -161,6 +167,7 @@ class OrderServiceImplTest {
         when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(reviewRepository.existsByOrderId(order.getId())).thenReturn(false);
         when(payoutService.ensureSellerReleasePayout(order)).thenReturn(Payout.builder()
                 .id(UUID.randomUUID())
                 .type(PayoutType.seller_release)

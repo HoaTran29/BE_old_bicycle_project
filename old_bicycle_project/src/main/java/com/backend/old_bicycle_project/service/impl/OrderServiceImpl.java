@@ -19,6 +19,7 @@ import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
+import com.backend.old_bicycle_project.repository.ReviewRepository;
 import com.backend.old_bicycle_project.service.OrderService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -37,6 +40,7 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
+    private final ReviewRepository reviewRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final PayoutService payoutService;
 
@@ -97,8 +101,14 @@ public class OrderServiceImpl implements OrderService {
                 ? orderRepository.findAllByOrderByCreatedAtDesc()
                 : orderRepository.findByBuyerIdOrSellerIdOrderByCreatedAtDesc(currentUser.getId(), currentUser.getId());
 
+        Set<UUID> reviewedOrderIds = orders.isEmpty()
+                ? Collections.emptySet()
+                : reviewRepository.findReviewedOrderIdsByOrderIds(
+                orders.stream().map(Order::getId).toList()
+        );
+
         return orders.stream()
-                .map(this::mapToDTO)
+                .map(order -> mapToDTO(order, reviewedOrderIds.contains(order.getId())))
                 .toList();
     }
 
@@ -291,6 +301,10 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderResponseDTO mapToDTO(Order order) {
+        return mapToDTO(order, reviewRepository.existsByOrderId(order.getId()));
+    }
+
+    private OrderResponseDTO mapToDTO(Order order, boolean buyerReviewSubmitted) {
         return OrderResponseDTO.builder()
                 .id(order.getId())
                 .productId(order.getProduct().getId())
@@ -309,6 +323,7 @@ public class OrderServiceImpl implements OrderService {
                 .status(order.getStatus())
                 .fundingStatus(order.getFundingStatus())
                 .paymentMethod(order.getPaymentMethod())
+                .buyerReviewSubmitted(buyerReviewSubmitted)
                 .acceptedAt(order.getAcceptedAt())
                 .paymentDeadline(order.getPaymentDeadline())
                 .createdAt(order.getCreatedAt())
