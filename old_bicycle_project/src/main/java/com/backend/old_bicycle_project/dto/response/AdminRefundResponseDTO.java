@@ -41,6 +41,8 @@ public class AdminRefundResponseDTO {
     private LocalDateTime reviewedAt;
     private LocalDateTime processedAt;
     private LocalDateTime createdAt;
+    private OrderEvidenceSubmissionResponseDTO sellerHandoverEvidence;
+    private OrderEvidenceSubmissionResponseDTO buyerReceiptEvidence;
     private OrderStatus orderStatus;
     private OrderFundingStatus fundingStatus;
     private PaymentMethod paymentMethod;

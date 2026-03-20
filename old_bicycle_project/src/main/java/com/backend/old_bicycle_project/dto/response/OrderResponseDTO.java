@@ -36,6 +36,8 @@ public class OrderResponseDTO {
     private OrderFundingStatus fundingStatus;
     private PaymentMethod paymentMethod;
     private boolean buyerReviewSubmitted;
+    private OrderEvidenceSubmissionResponseDTO sellerHandoverEvidence;
+    private OrderEvidenceSubmissionResponseDTO buyerReceiptEvidence;
     private LocalDateTime acceptedAt;
     private LocalDateTime paymentDeadline;
     private LocalDateTime createdAt;

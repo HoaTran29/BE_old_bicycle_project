@@ -37,7 +37,10 @@ public enum ErrorCode {
     PAYOUT_REFERENCE_REQUIRED(1029, "Bank reference is required to complete this payout", HttpStatus.BAD_REQUEST),
     INVALID_CREDENTIALS(1030, "Email or password is incorrect", HttpStatus.UNAUTHORIZED),
     ACCOUNT_INACTIVE(1031, "Your account is inactive. Please contact admin.", HttpStatus.FORBIDDEN),
-    ACCOUNT_BANNED(1032, "Your account has been banned. Please contact admin.", HttpStatus.FORBIDDEN);
+    ACCOUNT_BANNED(1032, "Your account has been banned. Please contact admin.", HttpStatus.FORBIDDEN),
+    ORDER_EVIDENCE_REQUIRED(1033, "At least 1 order evidence image is required", HttpStatus.BAD_REQUEST),
+    ORDER_EVIDENCE_LIMIT_EXCEEDED(1034, "You can upload up to 3 evidence images", HttpStatus.BAD_REQUEST),
+    ORDER_EVIDENCE_IMAGE_ONLY(1035, "Only image files are allowed for order evidence", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

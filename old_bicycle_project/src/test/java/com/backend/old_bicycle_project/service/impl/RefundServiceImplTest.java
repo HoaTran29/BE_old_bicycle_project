@@ -3,6 +3,7 @@ package com.backend.old_bicycle_project.service.impl;
 import com.backend.old_bicycle_project.dto.request.RefundCreateRequestDTO;
 import com.backend.old_bicycle_project.dto.request.RefundReviewRequestDTO;
 import com.backend.old_bicycle_project.dto.response.AdminRefundResponseDTO;
+import com.backend.old_bicycle_project.dto.response.OrderEvidenceSubmissionResponseDTO;
 import com.backend.old_bicycle_project.dto.response.RefundResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Payout;
@@ -11,6 +12,7 @@ import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
+import com.backend.old_bicycle_project.entity.enums.OrderEvidenceType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
@@ -23,6 +25,7 @@ import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
+import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,6 +66,9 @@ class RefundServiceImplTest {
 
     @Mock
     private PayoutService payoutService;
+
+    @Mock
+    private OrderEvidenceService orderEvidenceService;
 
     @InjectMocks
     private RefundServiceImpl refundService;
@@ -231,6 +237,18 @@ class RefundServiceImplTest {
         when(refundRequestRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
                 .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(refundRequest)));
         when(inspectionRepository.findDistinctProductIdsWithInspection(anyCollection())).thenReturn(List.of(product.getId()));
+        when(orderEvidenceService.getEvidenceByOrderIds(anyCollection())).thenReturn(
+                java.util.Map.of(
+                        order.getId(),
+                        java.util.Map.of(
+                                OrderEvidenceType.seller_handover,
+                                OrderEvidenceSubmissionResponseDTO.builder()
+                                        .id(UUID.randomUUID())
+                                        .evidenceType(OrderEvidenceType.seller_handover)
+                                        .build()
+                        )
+                )
+        );
 
         org.springframework.data.domain.Page<AdminRefundResponseDTO> result = refundService.getAdminRefunds("trek", RefundStatus.pending, 0, 12);
 
@@ -241,6 +259,7 @@ class RefundServiceImplTest {
         assertThat(firstItem.getBuyerName()).isEqualTo(buyer.getFullName());
         assertThat(firstItem.getSellerName()).isEqualTo(seller.getFullName());
         assertThat(firstItem.getStatus()).isEqualTo(RefundStatus.pending);
+        assertThat(firstItem.getSellerHandoverEvidence()).isNotNull();
     }
 
     private Order depositedOrder(User buyer) {

@@ -2,6 +2,7 @@ package com.backend.old_bicycle_project.service.impl;
 
 import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.OrderCreateRequestDTO;
+import com.backend.old_bicycle_project.dto.response.OrderEvidenceSubmissionResponseDTO;
 import com.backend.old_bicycle_project.dto.response.OrderResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Payout;
@@ -9,6 +10,7 @@ import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
+import com.backend.old_bicycle_project.entity.enums.OrderEvidenceType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
@@ -20,6 +22,7 @@ import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.ReviewRepository;
+import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.OrderService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import lombok.RequiredArgsConstructor;
@@ -31,8 +34,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +48,7 @@ public class OrderServiceImpl implements OrderService {
     private final ReviewRepository reviewRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final PayoutService payoutService;
+    private final OrderEvidenceService orderEvidenceService;
 
     @Override
     @Transactional
@@ -106,9 +112,15 @@ public class OrderServiceImpl implements OrderService {
                 : reviewRepository.findReviewedOrderIdsByOrderIds(
                 orders.stream().map(Order::getId).toList()
         );
+        Map<UUID, Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO>> evidenceByOrder =
+                orderEvidenceService.getEvidenceByOrderIds(orders.stream().map(Order::getId).toList());
 
         return orders.stream()
-                .map(order -> mapToDTO(order, reviewedOrderIds.contains(order.getId())))
+                .map(order -> mapToDTO(
+                        order,
+                        reviewedOrderIds.contains(order.getId()),
+                        evidenceByOrder.getOrDefault(order.getId(), Collections.emptyMap())
+                ))
                 .toList();
     }
 
@@ -161,7 +173,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponseDTO completeOrder(UUID orderId, User currentUser) {
+    public OrderResponseDTO completeOrder(UUID orderId, User currentUser, String note, List<MultipartFile> files) {
         Order order = getOrder(orderId);
         validateSellerOrAdmin(order, currentUser);
 
@@ -171,6 +183,8 @@ public class OrderServiceImpl implements OrderService {
 
         order.setStatus(OrderStatus.awaiting_buyer_confirmation);
         order = orderRepository.save(order);
+        OrderEvidenceSubmissionResponseDTO sellerEvidence =
+                orderEvidenceService.createSellerHandoverEvidence(order, currentUser, note, files);
 
         publishOrderNotification(
                 order.getBuyer().getId(),
@@ -179,12 +193,16 @@ public class OrderServiceImpl implements OrderService {
                 "{\"orderId\":\"" + order.getId() + "\"}"
         );
 
-        return mapToDTO(order);
+        return mapToDTO(
+                order,
+                reviewRepository.existsByOrderId(order.getId()),
+                Map.of(OrderEvidenceType.seller_handover, sellerEvidence)
+        );
     }
 
     @Override
     @Transactional
-    public OrderResponseDTO confirmReceived(UUID orderId, User currentUser) {
+    public OrderResponseDTO confirmReceived(UUID orderId, User currentUser, String note, List<MultipartFile> files) {
         Order order = getOrder(orderId);
         validateBuyerOrAdmin(order, currentUser);
 
@@ -201,7 +219,16 @@ public class OrderServiceImpl implements OrderService {
         productRepository.save(order.getProduct());
         order = orderRepository.save(order);
 
+        Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO> evidenceByType =
+                new java.util.EnumMap<>(OrderEvidenceType.class);
+        evidenceByType.putAll(orderEvidenceService.getEvidenceByOrderId(order.getId()));
+
         Payout payout = payoutService.ensureSellerReleasePayout(order);
+        OrderEvidenceSubmissionResponseDTO buyerEvidence =
+                orderEvidenceService.createBuyerReceiptEvidence(order, currentUser, note, files);
+        if (buyerEvidence != null) {
+            evidenceByType.put(OrderEvidenceType.buyer_receipt, buyerEvidence);
+        }
 
         publishOrderNotification(
                 order.getSeller().getId(),
@@ -212,7 +239,11 @@ public class OrderServiceImpl implements OrderService {
                 "{\"orderId\":\"" + order.getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
         );
 
-        return mapToDTO(order);
+        return mapToDTO(
+                order,
+                reviewRepository.existsByOrderId(order.getId()),
+                evidenceByType
+        );
     }
 
     @Override
@@ -301,10 +332,18 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderResponseDTO mapToDTO(Order order) {
-        return mapToDTO(order, reviewRepository.existsByOrderId(order.getId()));
+        return mapToDTO(
+                order,
+                reviewRepository.existsByOrderId(order.getId()),
+                orderEvidenceService.getEvidenceByOrderId(order.getId())
+        );
     }
 
-    private OrderResponseDTO mapToDTO(Order order, boolean buyerReviewSubmitted) {
+    private OrderResponseDTO mapToDTO(
+            Order order,
+            boolean buyerReviewSubmitted,
+            Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO> evidenceByType
+    ) {
         return OrderResponseDTO.builder()
                 .id(order.getId())
                 .productId(order.getProduct().getId())
@@ -324,6 +363,8 @@ public class OrderServiceImpl implements OrderService {
                 .fundingStatus(order.getFundingStatus())
                 .paymentMethod(order.getPaymentMethod())
                 .buyerReviewSubmitted(buyerReviewSubmitted)
+                .sellerHandoverEvidence(evidenceByType.get(OrderEvidenceType.seller_handover))
+                .buyerReceiptEvidence(evidenceByType.get(OrderEvidenceType.buyer_receipt))
                 .acceptedAt(order.getAcceptedAt())
                 .paymentDeadline(order.getPaymentDeadline())
                 .createdAt(order.getCreatedAt())

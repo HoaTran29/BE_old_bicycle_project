@@ -4,6 +4,7 @@ import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.RefundCreateRequestDTO;
 import com.backend.old_bicycle_project.dto.request.RefundReviewRequestDTO;
 import com.backend.old_bicycle_project.dto.response.AdminRefundResponseDTO;
+import com.backend.old_bicycle_project.dto.response.OrderEvidenceSubmissionResponseDTO;
 import com.backend.old_bicycle_project.dto.response.RefundResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Payout;
@@ -11,6 +12,7 @@ import com.backend.old_bicycle_project.entity.Payment;
 import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
+import com.backend.old_bicycle_project.entity.enums.OrderEvidenceType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentPhase;
@@ -22,6 +24,7 @@ import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
+import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.RefundService;
 import com.backend.old_bicycle_project.specification.RefundRequestSpecification;
@@ -36,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -49,6 +53,7 @@ public class RefundServiceImpl implements RefundService {
     private final InspectionRepository inspectionRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final PayoutService payoutService;
+    private final OrderEvidenceService orderEvidenceService;
 
     @Override
     @Transactional
@@ -141,12 +146,24 @@ public class RefundServiceImpl implements RefundService {
         Set<UUID> inspectedProductIds = productIds.isEmpty()
                 ? Set.of()
                 : new HashSet<>(inspectionRepository.findDistinctProductIdsWithInspection(productIds));
+        Map<UUID, Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO>> evidenceByOrder =
+                orderEvidenceService.getEvidenceByOrderIds(
+                        refundPage.getContent().stream()
+                                .map(RefundRequest::getOrder)
+                                .filter(order -> order != null)
+                                .map(Order::getId)
+                                .toList()
+                );
 
         return refundPage.map(refundRequest -> mapToAdminDTO(
                 refundRequest,
                 refundRequest.getOrder() != null
                         && refundRequest.getOrder().getProduct() != null
-                        && inspectedProductIds.contains(refundRequest.getOrder().getProduct().getId())
+                        && inspectedProductIds.contains(refundRequest.getOrder().getProduct().getId()),
+                evidenceByOrder.getOrDefault(
+                        refundRequest.getOrder() != null ? refundRequest.getOrder().getId() : null,
+                        Map.of()
+                )
         ));
     }
 
@@ -238,7 +255,11 @@ public class RefundServiceImpl implements RefundService {
                 .build();
     }
 
-    private AdminRefundResponseDTO mapToAdminDTO(RefundRequest refundRequest, boolean hasInspection) {
+    private AdminRefundResponseDTO mapToAdminDTO(
+            RefundRequest refundRequest,
+            boolean hasInspection,
+            Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO> evidenceByType
+    ) {
         Order order = refundRequest.getOrder();
         Payment payment = refundRequest.getPayment();
 
@@ -266,6 +287,8 @@ public class RefundServiceImpl implements RefundService {
                 .reviewedAt(refundRequest.getReviewedAt())
                 .processedAt(refundRequest.getProcessedAt())
                 .createdAt(refundRequest.getCreatedAt())
+                .sellerHandoverEvidence(evidenceByType.get(OrderEvidenceType.seller_handover))
+                .buyerReceiptEvidence(evidenceByType.get(OrderEvidenceType.buyer_receipt))
                 .paymentMethod(order != null ? order.getPaymentMethod() : null)
                 .orderStatus(order != null ? order.getStatus() : null)
                 .fundingStatus(order != null ? order.getFundingStatus() : null)
