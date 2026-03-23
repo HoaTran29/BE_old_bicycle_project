@@ -1019,13 +1019,14 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**category\_id**|UUID|FK -> Categories.id|ID danh mục xe.|
 |**brake\_type\_id**|UUID|FK -> Brake\_types.id, Not Null|ID loại phanh xe.|
 |**frame\_material\_id**|UUID|FK -> Frame\_materials.id, Not Null|ID chất liệu khung xe.|
+|**groupset\_id**|UUID|FK -> Groupsets.id|ID groupset chuẩn hóa để filter và quản trị master data.|
 |**title**|VARCHAR|Not Null|Tiêu đề bài đăng.|
 |**description**|TEXT|Nullable|Mô tả chi tiết sản phẩm.|
 |**price**|NUMERIC|Not Null|Giá bán hiện tại.|
 |**original\_price**|NUMERIC|Nullable|Giá gốc (lúc mua mới).|
 |**frame\_size**|VARCHAR|Nullable|Kích thước khung (S, M, L, 52cm...).|
 |**wheel\_size**|VARCHAR|Nullable|Kích thước bánh (29", 700c...).|
-|**groupset**|VARCHAR|Nullable|Bộ truyền động (Shimano 105, SRAM Red...).|
+|**groupset**|VARCHAR|Nullable|Tên groupset dạng text để giữ tương thích dữ liệu cũ và hiển thị fallback.|
 |**condition**|ENUM|Default: 'used'|Tình trạng: new\_90, used, needs\_repair.|
 |**province**|VARCHAR|Nullable|Tỉnh/Thành phố nơi bán.|
 |**district**|VARCHAR|Nullable|Quận/Huyện nơi bán.|
@@ -1083,6 +1084,15 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**name**|VARCHAR|Unique, Not Null|Tên vật liệu (VD: Nhôm 6061, Carbon Nano, Titan...).|
 |**description**|TEXT|Nullable|Mô tả đặc tính (VD: Nhẹ, bền, chống rỉ...).|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo.|
+
+### **Groupsets**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính groupset.|
+|**name**|VARCHAR|Unique, Not Null|Tên groupset chuẩn hóa (VD: Shimano 105, SRAM Rival).|
+|**description**|TEXT|Nullable|Mô tả ngắn về groupset, số speed hoặc dòng sử dụng.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo master data groupset.|
 
 ## **B.2 Inspection System**
 ### **inspections**

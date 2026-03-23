@@ -18,17 +18,17 @@ import java.util.UUID;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpecificationExecutor<Product> {
 
-    @EntityGraph(attributePaths = {"seller", "brand", "category", "brakeType", "frameMaterial"})
+    @EntityGraph(attributePaths = {"seller", "brand", "category", "brakeType", "frameMaterial", "groupsetReference"})
     Page<Product> findAll(Specification<Product> spec, Pageable pageable);
 
     Page<Product> findByStatusAndDeletedAtIsNull(ProductStatus status, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"seller", "brand", "category", "brakeType", "frameMaterial"})
+    @EntityGraph(attributePaths = {"seller", "brand", "category", "brakeType", "frameMaterial", "groupsetReference"})
     Page<Product> findBySellerIdAndDeletedAtIsNull(UUID sellerId, Pageable pageable);
 
     Page<Product> findAllByDeletedAtIsNull(Pageable pageable);
 
-    @EntityGraph(attributePaths = {"seller", "brand", "category", "brakeType", "frameMaterial"})
+    @EntityGraph(attributePaths = {"seller", "brand", "category", "brakeType", "frameMaterial", "groupsetReference"})
     Optional<Product> findByIdAndDeletedAtIsNull(UUID id);
 
     boolean existsByBrandIdAndDeletedAtIsNull(UUID brandId);
@@ -38,6 +38,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
     boolean existsByBrakeTypeIdAndDeletedAtIsNull(UUID brakeTypeId);
 
     boolean existsByFrameMaterialIdAndDeletedAtIsNull(UUID frameMaterialId);
+
+    boolean existsByGroupsetReferenceIdAndDeletedAtIsNull(UUID groupsetId);
 
     @Query("SELECT COUNT(p) FROM Product p WHERE p.seller.id = :sellerId")
     long countBySellerId(@Param("sellerId") UUID sellerId);

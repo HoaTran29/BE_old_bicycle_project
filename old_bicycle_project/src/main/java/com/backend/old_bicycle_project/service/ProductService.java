@@ -8,6 +8,7 @@ import com.backend.old_bicycle_project.entity.Brand;
 import com.backend.old_bicycle_project.entity.BrakeType;
 import com.backend.old_bicycle_project.entity.Category;
 import com.backend.old_bicycle_project.entity.FrameMaterial;
+import com.backend.old_bicycle_project.entity.Groupset;
 import com.backend.old_bicycle_project.entity.Inspection;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.ProductImage;
@@ -20,6 +21,7 @@ import com.backend.old_bicycle_project.repository.BrandRepository;
 import com.backend.old_bicycle_project.repository.BrakeTypeRepository;
 import com.backend.old_bicycle_project.repository.CategoryRepository;
 import com.backend.old_bicycle_project.repository.FrameMaterialRepository;
+import com.backend.old_bicycle_project.repository.GroupsetRepository;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
@@ -64,6 +66,7 @@ public class ProductService {
     private final CategoryRepository categoryRepository;
     private final BrakeTypeRepository brakeTypeRepository;
     private final FrameMaterialRepository frameMaterialRepository;
+    private final GroupsetRepository groupsetRepository;
     private final InspectionRepository inspectionRepository;
     private final StorageService storageService;
 
@@ -138,6 +141,7 @@ public class ProductService {
         Category category = request.getCategoryId() != null
                 ? categoryRepository.findById(request.getCategoryId()).orElse(null)
                 : null;
+        Groupset groupsetReference = resolveGroupsetReference(request.getGroupsetId(), request.getGroupset());
 
         Product product = Product.builder()
                 .seller(seller)
@@ -149,9 +153,10 @@ public class ProductService {
                 .category(category)
                 .brakeType(brakeType)
                 .frameMaterial(frameMaterial)
+                .groupsetReference(groupsetReference)
                 .frameSize(request.getFrameSize())
                 .wheelSize(request.getWheelSize())
-                .groupset(request.getGroupset())
+                .groupset(resolveGroupsetDisplayValue(groupsetReference, request.getGroupset()))
                 .condition(request.getCondition() != null ? request.getCondition() : com.backend.old_bicycle_project.entity.enums.ConditionType.used)
                 .province(request.getProvince())
                 .district(request.getDistrict())
@@ -180,7 +185,11 @@ public class ProductService {
         if (request.getDistrict() != null) product.setDistrict(request.getDistrict());
         if (request.getFrameSize() != null) product.setFrameSize(request.getFrameSize());
         if (request.getWheelSize() != null) product.setWheelSize(request.getWheelSize());
-        if (request.getGroupset() != null) product.setGroupset(request.getGroupset());
+        if (request.getGroupsetId() != null || request.getGroupset() != null) {
+            Groupset groupsetReference = resolveGroupsetReference(request.getGroupsetId(), request.getGroupset());
+            product.setGroupsetReference(groupsetReference);
+            product.setGroupset(resolveGroupsetDisplayValue(groupsetReference, request.getGroupset()));
+        }
 
         validateRequiredTechnicalFields(product.getFrameSize(), product.getWheelSize());
 
@@ -413,7 +422,8 @@ public class ProductService {
                 .district(product.getDistrict())
                 .frameSize(product.getFrameSize())
                 .wheelSize(product.getWheelSize())
-                .groupset(product.getGroupset())
+                .groupsetId(product.getGroupsetReference() != null ? product.getGroupsetReference().getId() : null)
+                .groupset(resolveGroupsetDisplayValue(product.getGroupsetReference(), product.getGroupset()))
                 .createdAt(product.getCreatedAt())
                 .expiresAt(product.getExpiresAt())
                 .seller(sellerInfo)
@@ -442,6 +452,28 @@ public class ProductService {
             case "price_desc" -> Sort.by("price").descending();
             default -> Sort.by("createdAt").descending();
         };
+    }
+
+    private Groupset resolveGroupsetReference(UUID groupsetId, String groupsetName) {
+        if (groupsetId != null) {
+            return groupsetRepository.findById(groupsetId)
+                    .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+        }
+        if (groupsetName == null || groupsetName.isBlank()) {
+            return null;
+        }
+        return groupsetRepository.findByNameIgnoreCase(groupsetName.trim()).orElse(null);
+    }
+
+    private String resolveGroupsetDisplayValue(Groupset groupsetReference, String fallbackGroupset) {
+        if (groupsetReference != null) {
+            return groupsetReference.getName();
+        }
+        if (fallbackGroupset == null) {
+            return null;
+        }
+        String normalizedGroupset = fallbackGroupset.trim();
+        return normalizedGroupset.isEmpty() ? null : normalizedGroupset;
     }
 
     private void validateRequiredTechnicalFields(String frameSize, String wheelSize) {

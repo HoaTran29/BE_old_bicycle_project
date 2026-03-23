@@ -65,6 +65,8 @@ public class ProductController {
             @RequestParam(required = false) String wheelSize,
             @Parameter(description = "Nhóm truyền động")
             @RequestParam(required = false) String groupset,
+            @Parameter(description = "ID groupset")
+            @RequestParam(required = false) UUID groupsetId,
             @Parameter(description = "Giá tối thiểu")
             @RequestParam(required = false) BigDecimal minPrice,
             @Parameter(description = "Giá tối đa")
@@ -90,6 +92,7 @@ public class ProductController {
         filter.setFrameSize(frameSize);
         filter.setWheelSize(wheelSize);
         filter.setGroupset(groupset);
+        filter.setGroupsetId(groupsetId);
         filter.setMinPrice(minPrice);
         filter.setMaxPrice(maxPrice);
         filter.setProvince(province);

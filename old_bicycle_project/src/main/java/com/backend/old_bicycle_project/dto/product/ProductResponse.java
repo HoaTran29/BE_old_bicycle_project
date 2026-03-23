@@ -25,6 +25,7 @@ public class ProductResponse {
     private String district;
     private String frameSize;
     private String wheelSize;
+    private UUID groupsetId;
     private String groupset;
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;

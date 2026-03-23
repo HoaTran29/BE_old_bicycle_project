@@ -11,10 +11,12 @@ import com.backend.old_bicycle_project.entity.Brand;
 import com.backend.old_bicycle_project.entity.BrakeType;
 import com.backend.old_bicycle_project.entity.Category;
 import com.backend.old_bicycle_project.entity.FrameMaterial;
+import com.backend.old_bicycle_project.entity.Groupset;
 import com.backend.old_bicycle_project.service.BrandService;
 import com.backend.old_bicycle_project.service.BrakeTypeService;
 import com.backend.old_bicycle_project.service.CategoryService;
 import com.backend.old_bicycle_project.service.FrameMaterialService;
+import com.backend.old_bicycle_project.service.GroupsetService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -37,6 +39,7 @@ public class ReferenceDataController {
     private final CategoryService categoryService;
     private final BrakeTypeService brakeTypeService;
     private final FrameMaterialService frameMaterialService;
+    private final GroupsetService groupsetService;
 
     @GetMapping("/api/brands")
     public ApiResponse<List<BrandResponseDTO>> getAllBrands() {
@@ -191,6 +194,43 @@ public class ReferenceDataController {
                 .build();
     }
 
+    @GetMapping("/api/groupsets")
+    public ApiResponse<List<ReferenceValueResponseDTO>> getAllGroupsets() {
+        return ApiResponse.<List<ReferenceValueResponseDTO>>builder()
+                .result(groupsetService.getAll().stream().map(this::toReferenceValueResponse).toList())
+                .build();
+    }
+
+    @PostMapping("/api/admin/groupsets")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<ReferenceValueResponseDTO> createGroupset(
+            @Valid @RequestBody AdminReferenceValueUpsertRequest request
+    ) {
+        return ApiResponse.<ReferenceValueResponseDTO>builder()
+                .result(toReferenceValueResponse(groupsetService.create(request.getName(), request.getDescription())))
+                .build();
+    }
+
+    @PutMapping("/api/admin/groupsets/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<ReferenceValueResponseDTO> updateGroupset(
+            @PathVariable UUID id,
+            @Valid @RequestBody AdminReferenceValueUpsertRequest request
+    ) {
+        return ApiResponse.<ReferenceValueResponseDTO>builder()
+                .result(toReferenceValueResponse(groupsetService.update(id, request.getName(), request.getDescription())))
+                .build();
+    }
+
+    @DeleteMapping("/api/admin/groupsets/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<String> deleteGroupset(@PathVariable UUID id) {
+        groupsetService.delete(id);
+        return ApiResponse.<String>builder()
+                .result("ÄÃ£ xÃ³a groupset")
+                .build();
+    }
+
     private BrandResponseDTO toBrandResponse(Brand brand) {
         return BrandResponseDTO.builder()
                 .id(brand.getId())
@@ -226,6 +266,15 @@ public class ReferenceDataController {
                 .name(frameMaterial.getName())
                 .description(frameMaterial.getDescription())
                 .createdAt(frameMaterial.getCreatedAt())
+                .build();
+    }
+
+    private ReferenceValueResponseDTO toReferenceValueResponse(Groupset groupset) {
+        return ReferenceValueResponseDTO.builder()
+                .id(groupset.getId())
+                .name(groupset.getName())
+                .description(groupset.getDescription())
+                .createdAt(groupset.getCreatedAt())
                 .build();
     }
 }

@@ -37,6 +37,9 @@ public class ProductFilterRequest {
     @Schema(description = "Nhóm truyền động")
     private String groupset;
 
+    @Schema(description = "ID groupset")
+    private UUID groupsetId;
+
     @Schema(description = "Giá tối thiểu")
     private BigDecimal minPrice;
 

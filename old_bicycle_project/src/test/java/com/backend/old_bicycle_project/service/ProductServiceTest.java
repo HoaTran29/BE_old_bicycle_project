@@ -5,6 +5,7 @@ import com.backend.old_bicycle_project.dto.product.ProductResponse;
 import com.backend.old_bicycle_project.dto.product.ProductUpdateRequest;
 import com.backend.old_bicycle_project.entity.BrakeType;
 import com.backend.old_bicycle_project.entity.FrameMaterial;
+import com.backend.old_bicycle_project.entity.Groupset;
 import com.backend.old_bicycle_project.entity.Inspection;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.ProductImage;
@@ -17,6 +18,7 @@ import com.backend.old_bicycle_project.repository.BrandRepository;
 import com.backend.old_bicycle_project.repository.BrakeTypeRepository;
 import com.backend.old_bicycle_project.repository.CategoryRepository;
 import com.backend.old_bicycle_project.repository.FrameMaterialRepository;
+import com.backend.old_bicycle_project.repository.GroupsetRepository;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
@@ -71,6 +73,9 @@ class ProductServiceTest {
 
     @Mock
     private FrameMaterialRepository frameMaterialRepository;
+
+    @Mock
+    private GroupsetRepository groupsetRepository;
 
     @Mock
     private InspectionRepository inspectionRepository;
@@ -131,6 +136,52 @@ class ProductServiceTest {
         assertThat(response.getExpiresAt()).isEqualTo(LocalDateTime.of(2026, 4, 12, 10, 0));
         assertThat(response.getImages()).hasSize(3);
         verify(productImageRepository).saveAll(anyList());
+    }
+
+    @Test
+    void createMapsGroupsetReferenceWhenGroupsetIdIsProvided() {
+        ProductCreateRequest request = validCreateRequest();
+        User seller = seller();
+        UUID groupsetId = UUID.randomUUID();
+        request.setGroupsetId(groupsetId);
+
+        Groupset groupset = Groupset.builder()
+                .id(groupsetId)
+                .name("Shimano 105")
+                .build();
+
+        when(brakeTypeRepository.findById(request.getBrakeTypeId())).thenReturn(Optional.of(BrakeType.builder()
+                .id(request.getBrakeTypeId())
+                .name("Disc")
+                .build()));
+        when(frameMaterialRepository.findById(request.getFrameMaterialId())).thenReturn(Optional.of(FrameMaterial.builder()
+                .id(request.getFrameMaterialId())
+                .name("Aluminum")
+                .build()));
+        when(groupsetRepository.findById(groupsetId)).thenReturn(Optional.of(groupset));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+            Product product = invocation.getArgument(0);
+            if (product.getId() == null) {
+                product.setId(UUID.randomUUID());
+            }
+            if (product.getCreatedAt() == null) {
+                product.setCreatedAt(LocalDateTime.of(2026, 3, 13, 10, 0));
+            }
+            return product;
+        });
+        when(storageService.uploadFile(any(), anyString()))
+                .thenReturn("https://cdn.test/bike-1.jpg", "https://cdn.test/bike-2.jpg", "https://cdn.test/bike-3.jpg");
+        when(productImageRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(inspectionRepository.findByProductId(any(UUID.class))).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.create(
+                request,
+                List.of(image("bike-1.jpg"), image("bike-2.jpg"), image("bike-3.jpg")),
+                seller
+        );
+
+        assertThat(response.getGroupsetId()).isEqualTo(groupsetId);
+        assertThat(response.getGroupset()).isEqualTo("Shimano 105");
     }
 
     @Test

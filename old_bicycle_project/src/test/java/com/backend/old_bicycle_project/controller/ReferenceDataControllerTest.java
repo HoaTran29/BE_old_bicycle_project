@@ -11,10 +11,12 @@ import com.backend.old_bicycle_project.entity.Brand;
 import com.backend.old_bicycle_project.entity.BrakeType;
 import com.backend.old_bicycle_project.entity.Category;
 import com.backend.old_bicycle_project.entity.FrameMaterial;
+import com.backend.old_bicycle_project.entity.Groupset;
 import com.backend.old_bicycle_project.service.BrandService;
 import com.backend.old_bicycle_project.service.BrakeTypeService;
 import com.backend.old_bicycle_project.service.CategoryService;
 import com.backend.old_bicycle_project.service.FrameMaterialService;
+import com.backend.old_bicycle_project.service.GroupsetService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -42,6 +44,9 @@ class ReferenceDataControllerTest {
 
     @Mock
     private FrameMaterialService frameMaterialService;
+
+    @Mock
+    private GroupsetService groupsetService;
 
     @InjectMocks
     private ReferenceDataController referenceDataController;
@@ -128,5 +133,38 @@ class ReferenceDataControllerTest {
 
         assertThat(response.getResult().getName()).isEqualTo("Carbon");
         verify(frameMaterialService).create("Carbon", "Carbon frame");
+    }
+
+    @Test
+    void getAllGroupsetsMapsEntityToDto() {
+        Groupset groupset = Groupset.builder()
+                .id(UUID.randomUUID())
+                .name("Shimano 105")
+                .description("11-speed road groupset")
+                .build();
+        when(groupsetService.getAll()).thenReturn(List.of(groupset));
+
+        ApiResponse<List<ReferenceValueResponseDTO>> response = referenceDataController.getAllGroupsets();
+
+        assertThat(response.getResult()).hasSize(1);
+        assertThat(response.getResult().getFirst().getName()).isEqualTo("Shimano 105");
+    }
+
+    @Test
+    void createGroupsetDelegatesToService() {
+        AdminReferenceValueUpsertRequest request = new AdminReferenceValueUpsertRequest();
+        request.setName("SRAM Rival");
+        request.setDescription("12-speed road groupset");
+        Groupset groupset = Groupset.builder()
+                .id(UUID.randomUUID())
+                .name("SRAM Rival")
+                .description("12-speed road groupset")
+                .build();
+        when(groupsetService.create("SRAM Rival", "12-speed road groupset")).thenReturn(groupset);
+
+        ApiResponse<ReferenceValueResponseDTO> response = referenceDataController.createGroupset(request);
+
+        assertThat(response.getResult().getName()).isEqualTo("SRAM Rival");
+        verify(groupsetService).create("SRAM Rival", "12-speed road groupset");
     }
 }

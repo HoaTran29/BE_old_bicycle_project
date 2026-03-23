@@ -76,7 +76,9 @@ public class ProductSpecification {
                 predicates.add(cb.equal(cb.lower(root.get("wheelSize")), filter.getWheelSize().toLowerCase()));
             }
 
-            if (filter.getGroupset() != null && !filter.getGroupset().isBlank()) {
+            if (filter.getGroupsetId() != null) {
+                predicates.add(cb.equal(root.get("groupsetReference").get("id"), filter.getGroupsetId()));
+            } else if (filter.getGroupset() != null && !filter.getGroupset().isBlank()) {
                 predicates.add(cb.like(
                         cb.lower(root.get("groupset")),
                         "%" + filter.getGroupset().toLowerCase() + "%"
