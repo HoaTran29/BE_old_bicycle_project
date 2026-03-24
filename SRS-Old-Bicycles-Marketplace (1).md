@@ -132,7 +132,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 ### **2.1.6 Communications Interfaces**
 - **Protocols**: HTTPS (TLS 1.3), WebSocket (real-time chat)
 - **Data formats**: JSON (API), WebP/JPEG (images), MP4 (videos)
-- **Security**: JWT authentication, OAuth 2.0 social login
+- **Security**: JWT authentication, email/password login, email verification, password reset
 
 
 ## **2.2 Product Functions**
@@ -380,12 +380,12 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Priority**|Must|
 
 
-#### **FR-AUTH-003: Social Login**
+#### **FR-AUTH-003: Email/Password Login UI**
 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-AUTH-003|
-|**Description**|Hệ thống shall hỗ trợ đăng nhập qua Google và Facebook|
+|**Description**|Màn hình đăng nhập web shall chỉ hiển thị form email/mật khẩu; không hiển thị nút đăng nhập Google hoặc Facebook|
 |**Priority**|Should|
 
 
@@ -854,6 +854,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 - Backend gọi Vercel AI Gateway theo kiểu server-side; không lộ API key ở browser
 - Assistant chỉ giải thích và hướng dẫn theo dữ liệu hiện có, không tự thực hiện action thay user
 - Nếu context không đủ hoặc AI Gateway chưa cấu hình, hệ thống phải trả thông báo rõ ràng thay vì bịa dữ liệu
+- CTA hỗ trợ trên trang hướng dẫn shall điều hướng trực tiếp sang route `/assistant` thay vì mở một kênh chat hỗ trợ riêng
 
 
 ### **3.3.9 Admin Management**
