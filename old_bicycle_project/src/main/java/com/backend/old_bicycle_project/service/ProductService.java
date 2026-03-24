@@ -428,6 +428,7 @@ public class ProductService {
                 .expiresAt(product.getExpiresAt())
                 .seller(sellerInfo)
                 .brandName(product.getBrand() != null ? product.getBrand().getName() : null)
+                .categoryId(product.getCategory() != null ? product.getCategory().getId() : null)
                 .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
                 .brakeTypeName(product.getBrakeType() != null ? product.getBrakeType().getName() : null)
                 .frameMaterialName(product.getFrameMaterial() != null ? product.getFrameMaterial().getName() : null)

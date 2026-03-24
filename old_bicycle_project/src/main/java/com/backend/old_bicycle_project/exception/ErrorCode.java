@@ -40,7 +40,9 @@ public enum ErrorCode {
     ACCOUNT_BANNED(1032, "Your account has been banned. Please contact admin.", HttpStatus.FORBIDDEN),
     ORDER_EVIDENCE_REQUIRED(1033, "At least 1 order evidence image is required", HttpStatus.BAD_REQUEST),
     ORDER_EVIDENCE_LIMIT_EXCEEDED(1034, "You can upload up to 3 evidence images", HttpStatus.BAD_REQUEST),
-    ORDER_EVIDENCE_IMAGE_ONLY(1035, "Only image files are allowed for order evidence", HttpStatus.BAD_REQUEST);
+    ORDER_EVIDENCE_IMAGE_ONLY(1035, "Only image files are allowed for order evidence", HttpStatus.BAD_REQUEST),
+    SIZE_CHART_ALREADY_EXISTS(1036, "This category already has a size chart", HttpStatus.CONFLICT),
+    SIZE_CHART_INVALID(1037, "Size chart data is invalid", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

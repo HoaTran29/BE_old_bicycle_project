@@ -3,27 +3,35 @@ package com.backend.old_bicycle_project.controller;
 import com.backend.old_bicycle_project.dto.request.AdminBrandUpsertRequest;
 import com.backend.old_bicycle_project.dto.request.AdminCategoryUpsertRequest;
 import com.backend.old_bicycle_project.dto.request.AdminReferenceValueUpsertRequest;
+import com.backend.old_bicycle_project.dto.request.SizeChartRowRequestDTO;
+import com.backend.old_bicycle_project.dto.request.SizeChartUpsertRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.BrandResponseDTO;
 import com.backend.old_bicycle_project.dto.response.CategoryResponseDTO;
 import com.backend.old_bicycle_project.dto.response.ReferenceValueResponseDTO;
+import com.backend.old_bicycle_project.dto.response.SizeChartResponseDTO;
 import com.backend.old_bicycle_project.entity.Brand;
 import com.backend.old_bicycle_project.entity.BrakeType;
 import com.backend.old_bicycle_project.entity.Category;
 import com.backend.old_bicycle_project.entity.FrameMaterial;
 import com.backend.old_bicycle_project.entity.Groupset;
+import com.backend.old_bicycle_project.entity.SizeChart;
+import com.backend.old_bicycle_project.entity.SizeChartRow;
 import com.backend.old_bicycle_project.service.BrandService;
 import com.backend.old_bicycle_project.service.BrakeTypeService;
 import com.backend.old_bicycle_project.service.CategoryService;
 import com.backend.old_bicycle_project.service.FrameMaterialService;
 import com.backend.old_bicycle_project.service.GroupsetService;
+import com.backend.old_bicycle_project.service.SizeChartService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,6 +55,9 @@ class ReferenceDataControllerTest {
 
     @Mock
     private GroupsetService groupsetService;
+
+    @Mock
+    private SizeChartService sizeChartService;
 
     @InjectMocks
     private ReferenceDataController referenceDataController;
@@ -166,5 +177,86 @@ class ReferenceDataControllerTest {
 
         assertThat(response.getResult().getName()).isEqualTo("SRAM Rival");
         verify(groupsetService).create("SRAM Rival", "12-speed road groupset");
+    }
+
+    @Test
+    void getSizeChartByCategoryMapsRowsAndCategoryMetadata() {
+        UUID categoryId = UUID.randomUUID();
+        Category category = Category.builder()
+                .id(categoryId)
+                .name("Road Bike")
+                .slug("road-bike")
+                .build();
+        SizeChart sizeChart = SizeChart.builder()
+                .id(UUID.randomUUID())
+                .category(category)
+                .name("Road bike size guide")
+                .description("Height guidance for road bikes")
+                .createdAt(LocalDateTime.now().minusDays(1))
+                .updatedAt(LocalDateTime.now())
+                .rows(List.of(
+                        SizeChartRow.builder()
+                                .id(UUID.randomUUID())
+                                .frameSize("54")
+                                .heightMinCm(170)
+                                .heightMaxCm(178)
+                                .note("Tư thế road tiêu chuẩn")
+                                .displayOrder(0)
+                                .build()
+                ))
+                .build();
+        when(sizeChartService.getByCategory(categoryId)).thenReturn(Optional.of(sizeChart));
+
+        ApiResponse<SizeChartResponseDTO> response = referenceDataController.getSizeChartByCategory(categoryId);
+
+        assertThat(response.getResult()).isNotNull();
+        assertThat(response.getResult().getCategoryName()).isEqualTo("Road Bike");
+        assertThat(response.getResult().getRows()).hasSize(1);
+        assertThat(response.getResult().getRows().getFirst().getFrameSize()).isEqualTo("54");
+    }
+
+    @Test
+    void createSizeChartDelegatesToService() {
+        UUID categoryId = UUID.randomUUID();
+        SizeChartUpsertRequestDTO request = new SizeChartUpsertRequestDTO();
+        request.setCategoryId(categoryId);
+        request.setName("Road bike size guide");
+        request.setDescription("Height guidance");
+
+        SizeChartRowRequestDTO rowRequest = new SizeChartRowRequestDTO();
+        rowRequest.setFrameSize("54");
+        rowRequest.setHeightMinCm(170);
+        rowRequest.setHeightMaxCm(178);
+        rowRequest.setNote("Road fit");
+        request.setRows(List.of(rowRequest));
+
+        Category category = Category.builder()
+                .id(categoryId)
+                .name("Road Bike")
+                .slug("road-bike")
+                .build();
+        SizeChart sizeChart = SizeChart.builder()
+                .id(UUID.randomUUID())
+                .category(category)
+                .name("Road bike size guide")
+                .description("Height guidance")
+                .rows(List.of(
+                        SizeChartRow.builder()
+                                .id(UUID.randomUUID())
+                                .frameSize("54")
+                                .heightMinCm(170)
+                                .heightMaxCm(178)
+                                .note("Road fit")
+                                .displayOrder(0)
+                                .build()
+                ))
+                .build();
+        when(sizeChartService.create(request)).thenReturn(sizeChart);
+
+        ApiResponse<SizeChartResponseDTO> response = referenceDataController.createSizeChart(request);
+
+        assertThat(response.getResult()).isNotNull();
+        assertThat(response.getResult().getName()).isEqualTo("Road bike size guide");
+        verify(sizeChartService).create(request);
     }
 }

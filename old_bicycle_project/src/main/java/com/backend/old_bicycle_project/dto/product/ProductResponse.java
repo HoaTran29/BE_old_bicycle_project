@@ -31,6 +31,7 @@ public class ProductResponse {
     private LocalDateTime expiresAt;
     private SellerInfo seller;
     private String brandName;
+    private UUID categoryId;
     private String categoryName;
     private String brakeTypeName;
     private String frameMaterialName;

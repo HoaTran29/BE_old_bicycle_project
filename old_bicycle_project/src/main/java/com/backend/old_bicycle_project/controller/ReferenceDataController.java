@@ -3,20 +3,26 @@ package com.backend.old_bicycle_project.controller;
 import com.backend.old_bicycle_project.dto.request.AdminBrandUpsertRequest;
 import com.backend.old_bicycle_project.dto.request.AdminCategoryUpsertRequest;
 import com.backend.old_bicycle_project.dto.request.AdminReferenceValueUpsertRequest;
+import com.backend.old_bicycle_project.dto.request.SizeChartUpsertRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.BrandResponseDTO;
 import com.backend.old_bicycle_project.dto.response.CategoryResponseDTO;
 import com.backend.old_bicycle_project.dto.response.ReferenceValueResponseDTO;
+import com.backend.old_bicycle_project.dto.response.SizeChartResponseDTO;
+import com.backend.old_bicycle_project.dto.response.SizeChartRowResponseDTO;
 import com.backend.old_bicycle_project.entity.Brand;
 import com.backend.old_bicycle_project.entity.BrakeType;
 import com.backend.old_bicycle_project.entity.Category;
 import com.backend.old_bicycle_project.entity.FrameMaterial;
 import com.backend.old_bicycle_project.entity.Groupset;
+import com.backend.old_bicycle_project.entity.SizeChart;
+import com.backend.old_bicycle_project.entity.SizeChartRow;
 import com.backend.old_bicycle_project.service.BrandService;
 import com.backend.old_bicycle_project.service.BrakeTypeService;
 import com.backend.old_bicycle_project.service.CategoryService;
 import com.backend.old_bicycle_project.service.FrameMaterialService;
 import com.backend.old_bicycle_project.service.GroupsetService;
+import com.backend.old_bicycle_project.service.SizeChartService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -40,6 +46,7 @@ public class ReferenceDataController {
     private final BrakeTypeService brakeTypeService;
     private final FrameMaterialService frameMaterialService;
     private final GroupsetService groupsetService;
+    private final SizeChartService sizeChartService;
 
     @GetMapping("/api/brands")
     public ApiResponse<List<BrandResponseDTO>> getAllBrands() {
@@ -227,7 +234,52 @@ public class ReferenceDataController {
     public ApiResponse<String> deleteGroupset(@PathVariable UUID id) {
         groupsetService.delete(id);
         return ApiResponse.<String>builder()
-                .result("ÄÃ£ xÃ³a groupset")
+                .result("Đã xóa groupset")
+                .build();
+    }
+
+    @GetMapping("/api/size-charts/category/{categoryId}")
+    public ApiResponse<SizeChartResponseDTO> getSizeChartByCategory(@PathVariable UUID categoryId) {
+        return ApiResponse.<SizeChartResponseDTO>builder()
+                .result(sizeChartService.getByCategory(categoryId).map(this::toSizeChartResponse).orElse(null))
+                .build();
+    }
+
+    @GetMapping("/api/admin/size-charts")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<List<SizeChartResponseDTO>> getAllSizeCharts() {
+        return ApiResponse.<List<SizeChartResponseDTO>>builder()
+                .result(sizeChartService.getAll().stream().map(this::toSizeChartResponse).toList())
+                .build();
+    }
+
+    @PostMapping("/api/admin/size-charts")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<SizeChartResponseDTO> createSizeChart(
+            @Valid @RequestBody SizeChartUpsertRequestDTO request
+    ) {
+        return ApiResponse.<SizeChartResponseDTO>builder()
+                .result(toSizeChartResponse(sizeChartService.create(request)))
+                .build();
+    }
+
+    @PutMapping("/api/admin/size-charts/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<SizeChartResponseDTO> updateSizeChart(
+            @PathVariable UUID id,
+            @Valid @RequestBody SizeChartUpsertRequestDTO request
+    ) {
+        return ApiResponse.<SizeChartResponseDTO>builder()
+                .result(toSizeChartResponse(sizeChartService.update(id, request)))
+                .build();
+    }
+
+    @DeleteMapping("/api/admin/size-charts/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<String> deleteSizeChart(@PathVariable UUID id) {
+        sizeChartService.delete(id);
+        return ApiResponse.<String>builder()
+                .result("Đã xóa size chart")
                 .build();
     }
 
@@ -275,6 +327,30 @@ public class ReferenceDataController {
                 .name(groupset.getName())
                 .description(groupset.getDescription())
                 .createdAt(groupset.getCreatedAt())
+                .build();
+    }
+
+    private SizeChartResponseDTO toSizeChartResponse(SizeChart sizeChart) {
+        return SizeChartResponseDTO.builder()
+                .id(sizeChart.getId())
+                .categoryId(sizeChart.getCategory().getId())
+                .categoryName(sizeChart.getCategory().getName())
+                .name(sizeChart.getName())
+                .description(sizeChart.getDescription())
+                .rows(sizeChart.getRows().stream().map(this::toSizeChartRowResponse).toList())
+                .createdAt(sizeChart.getCreatedAt())
+                .updatedAt(sizeChart.getUpdatedAt())
+                .build();
+    }
+
+    private SizeChartRowResponseDTO toSizeChartRowResponse(SizeChartRow row) {
+        return SizeChartRowResponseDTO.builder()
+                .id(row.getId())
+                .frameSize(row.getFrameSize())
+                .heightMinCm(row.getHeightMinCm())
+                .heightMaxCm(row.getHeightMaxCm())
+                .note(row.getNote())
+                .displayOrder(row.getDisplayOrder())
                 .build();
     }
 }

@@ -143,7 +143,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |F-002|Bike Listing|Đăng tin bán xe với ảnh, video, mô tả; bắt buộc qua admin moderation và inspection trước khi public|Must|
 |F-003|Search & Filter|Tìm kiếm và lọc xe theo nhiều tiêu chí|Must|
 |F-004|Advanced Filter|Lọc theo thông số kỹ thuật (size, groupset, phanh)|Must|
-|F-005|Bike Detail View|Xem chi tiết xe, ảnh, lịch sử|Must|
+|F-005|Bike Detail View|Xem chi tiết xe, ảnh, lịch sử, báo cáo kiểm định và gợi ý size theo danh mục|Must|
 |F-006|Messaging System|Chat real-time giữa buyer và seller|Must|
 |F-007|Wishlist|Lưu xe yêu thích|Should|
 |F-008|Deposit & Order|Đặt cọc, quản lý đơn hàng, refund và payout thủ công có đối soát|Must|
@@ -295,7 +295,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 | :- | :- | :- |
 |UI-001|Homepage|Landing page với featured bikes, search|
 |UI-002|Bike Listing Page|Danh sách xe với filters, pagination|
-|UI-003|Bike Detail Page|Chi tiết xe, gallery, seller info, báo cáo kiểm định|
+|UI-003|Bike Detail Page|Chi tiết xe, gallery, seller info, báo cáo kiểm định, gợi ý size theo category|
 |UI-004|Login/Register|Authentication forms|
 |UI-005|Seller Dashboard|Quản lý tin đăng, đơn hàng, tin nhắn|
 |UI-006|Create Listing|Form đăng tin với upload media|
@@ -986,6 +986,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Moderation**|Quá trình Admin duyệt/từ chối nội dung|
 |**Groupset**|Bộ truyền động xe đạp (líp, đùi đĩa, tay đề...)|
 |**Frame Size**|Kích thước khung xe (S/M/L/XL hoặc cm)|
+|**Size Chart**|Bảng tham chiếu theo danh mục xe để gợi ý chiều cao phù hợp với từng frame size|
 
 
 # **Appendix B: Database Schema**
@@ -1093,6 +1094,31 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**name**|VARCHAR|Unique, Not Null|Tên groupset chuẩn hóa (VD: Shimano 105, SRAM Rival).|
 |**description**|TEXT|Nullable|Mô tả ngắn về groupset, số speed hoặc dòng sử dụng.|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo master data groupset.|
+
+### **size_charts**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính size chart.|
+|**category\_id**|UUID|FK -> Categories.id, Unique, Not Null|Mỗi category có tối đa một bảng size chart đang hoạt động.|
+|**name**|VARCHAR|Not Null|Tên hiển thị của bảng hướng dẫn size.|
+|**description**|TEXT|Nullable|Mô tả ngắn về phạm vi áp dụng của bảng size chart.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo size chart.|
+|**updated\_at**|TIMESTAMP|Default: Now()|Thời gian cập nhật gần nhất.|
+
+### **size_chart_rows**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính dòng size chart.|
+|**size\_chart\_id**|UUID|FK -> size\_charts.id, Not Null|ID bảng size chart mà dòng này thuộc về.|
+|**frame\_size**|VARCHAR|Not Null|Frame size tương ứng, ví dụ S, M, 52, 54.|
+|**height\_min\_cm**|INT|Not Null|Chiều cao tối thiểu gợi ý cho frame size này.|
+|**height\_max\_cm**|INT|Not Null|Chiều cao tối đa gợi ý cho frame size này.|
+|**note**|TEXT|Nullable|Ghi chú bổ sung cho dòng size chart.|
+|**display\_order**|INT|Default: 0|Thứ tự hiển thị các dòng trong bảng.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo dòng size chart.|
+|**updated\_at**|TIMESTAMP|Default: Now()|Thời gian cập nhật gần nhất.|
 
 ## **B.2 Inspection System**
 ### **inspections**

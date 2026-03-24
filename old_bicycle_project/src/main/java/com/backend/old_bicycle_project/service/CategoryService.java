@@ -5,6 +5,7 @@ import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.CategoryRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
+import com.backend.old_bicycle_project.repository.SizeChartRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
+    private final SizeChartRepository sizeChartRepository;
 
     public List<Category> getRootCategories() {
         return categoryRepository.findByParentIsNull();
@@ -65,6 +67,9 @@ public class CategoryService {
             throw new AppException(ErrorCode.CATEGORY_HIERARCHY_INVALID);
         }
         if (productRepository.existsByCategoryIdAndDeletedAtIsNull(id)) {
+            throw new AppException(ErrorCode.REFERENCE_DATA_IN_USE);
+        }
+        if (sizeChartRepository.existsByCategoryId(id)) {
             throw new AppException(ErrorCode.REFERENCE_DATA_IN_USE);
         }
         categoryRepository.deleteById(id);

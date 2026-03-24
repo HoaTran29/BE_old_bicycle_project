@@ -135,6 +135,7 @@ class ProductServiceTest {
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
         assertThat(response.getExpiresAt()).isEqualTo(LocalDateTime.of(2026, 4, 12, 10, 0));
         assertThat(response.getImages()).hasSize(3);
+        assertThat(response.getCategoryId()).isNull();
         verify(productImageRepository).saveAll(anyList());
     }
 
@@ -213,6 +214,7 @@ class ProductServiceTest {
 
         assertThat(response.getId()).isEqualTo(product.getId());
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
+        assertThat(response.getCategoryId()).isNull();
     }
 
     @Test
