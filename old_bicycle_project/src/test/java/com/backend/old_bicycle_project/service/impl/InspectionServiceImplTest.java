@@ -212,6 +212,7 @@ class InspectionServiceImplTest {
 
         when(productRepository.findById(product.getId())).thenReturn(java.util.Optional.of(product));
         when(userRepository.findById(admin.getId())).thenReturn(java.util.Optional.of(admin));
+        when(userRepository.findByRole(AppRole.inspector)).thenReturn(List.of(inspector));
         when(inspectionRepository.findByProductId(product.getId())).thenReturn(java.util.Optional.empty());
         when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> {
             Inspection savedInspection = invocation.getArgument(0);
@@ -227,9 +228,11 @@ class InspectionServiceImplTest {
         assertThat(result.getProductId()).isEqualTo(product.getId());
         assertThat(product.getStatus()).isEqualTo(ProductStatus.pending_inspection);
         ArgumentCaptor<NotificationEvent> eventCaptor = ArgumentCaptor.forClass(NotificationEvent.class);
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().getUserId()).isEqualTo(seller.getId());
-        assertThat(eventCaptor.getValue().getType()).isEqualTo(NotificationType.inspection);
+        verify(eventPublisher, org.mockito.Mockito.times(2)).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues()).extracting(NotificationEvent::getUserId)
+                .containsExactlyInAnyOrder(seller.getId(), inspector.getId());
+        assertThat(eventCaptor.getAllValues()).extracting(NotificationEvent::getType)
+                .containsOnly(NotificationType.inspection);
     }
 
     @Test

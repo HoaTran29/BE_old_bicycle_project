@@ -11,6 +11,7 @@ import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Payment;
 import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.OrderEvidenceType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
@@ -24,6 +25,7 @@ import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
+import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.RefundService;
@@ -51,6 +53,7 @@ public class RefundServiceImpl implements RefundService {
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final InspectionRepository inspectionRepository;
+    private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final PayoutService payoutService;
     private final OrderEvidenceService orderEvidenceService;
@@ -102,6 +105,7 @@ public class RefundServiceImpl implements RefundService {
                 "Yêu cầu hoàn tiền của bạn đã được gửi cho admin xem xét.",
                 "{\"orderId\":\"" + order.getId() + "\",\"refundId\":\"" + refundRequest.getId() + "\"}"
         );
+        publishAdminRefundPendingNotification(order, refundRequest);
 
         return mapToDTO(refundRequest);
     }
@@ -232,6 +236,24 @@ public class RefundServiceImpl implements RefundService {
                 NotificationType.order,
                 metadata
         ));
+    }
+
+    private void publishAdminRefundPendingNotification(Order order, RefundRequest refundRequest) {
+        String metadata = "{\"orderId\":\"" + order.getId() + "\",\"refundId\":\"" + refundRequest.getId() + "\"}";
+        String productTitle = order.getProduct() != null && order.getProduct().getTitle() != null
+                ? order.getProduct().getTitle()
+                : "đơn hàng";
+        userRepository.findByRole(AppRole.admin).stream()
+                .map(User::getId)
+                .distinct()
+                .forEach(adminId -> eventPublisher.publishEvent(new NotificationEvent(
+                        this,
+                        adminId,
+                        "Có yêu cầu hoàn tiền mới cần duyệt",
+                        "Đơn \"" + productTitle + "\" vừa có yêu cầu hoàn tiền từ người mua.",
+                        NotificationType.order,
+                        metadata
+                )));
     }
 
     private RefundResponseDTO mapToDTO(RefundRequest refundRequest) {

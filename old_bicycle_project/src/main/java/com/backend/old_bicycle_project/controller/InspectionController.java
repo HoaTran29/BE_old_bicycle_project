@@ -1,6 +1,7 @@
 package com.backend.old_bicycle_project.controller;
 
 import com.backend.old_bicycle_project.dto.request.InspectionEvaluationDTO;
+import com.backend.old_bicycle_project.dto.product.ProductResponse;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.InspectionDashboardResponseDTO;
 import com.backend.old_bicycle_project.dto.response.InspectionHistoryItemResponseDTO;
@@ -8,6 +9,7 @@ import com.backend.old_bicycle_project.dto.response.InspectionRequestItemRespons
 import com.backend.old_bicycle_project.dto.response.InspectionResponseDTO;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.InspectionService;
+import com.backend.old_bicycle_project.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -26,6 +28,7 @@ import java.util.UUID;
 public class InspectionController {
 
     private final InspectionService inspectionService;
+    private final ProductService productService;
 
     @PostMapping("/request/{productId}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -63,6 +66,18 @@ public class InspectionController {
         return ResponseEntity.ok(ApiResponse.<InspectionResponseDTO>builder()
                 .code(200)
                 .message("Inspection fetched successfully")
+                .result(responseDTO)
+                .build());
+    }
+
+    @GetMapping("/product-context/{productId}")
+    @PreAuthorize("hasAnyRole('INSPECTOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ProductResponse>> getInspectionProductContext(
+            @PathVariable UUID productId) {
+        ProductResponse responseDTO = productService.getAdminById(productId);
+        return ResponseEntity.ok(ApiResponse.<ProductResponse>builder()
+                .code(200)
+                .message("Inspection product context fetched successfully")
                 .result(responseDTO)
                 .build());
     }

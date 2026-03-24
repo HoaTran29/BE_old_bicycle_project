@@ -25,6 +25,7 @@ import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
+import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,8 @@ import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -62,6 +65,9 @@ class RefundServiceImplTest {
     private InspectionRepository inspectionRepository;
 
     @Mock
+    private UserRepository userRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @Mock
@@ -76,6 +82,7 @@ class RefundServiceImplTest {
     @Test
     void requestRefundMovesOrderIntoRefundPending() {
         User buyer = user(AppRole.buyer, "buyer@test.dev");
+        User admin = user(AppRole.admin, "admin@test.dev");
         Order order = depositedOrder(buyer);
         Payment payment = successfulUpfrontPayment(order);
 
@@ -84,6 +91,7 @@ class RefundServiceImplTest {
                 .thenReturn(Optional.empty());
         when(paymentRepository.findFirstByOrderIdAndPhaseOrderByCreatedAtDesc(order.getId(), PaymentPhase.upfront))
                 .thenReturn(Optional.of(payment));
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(admin));
         when(refundRequestRepository.save(any(RefundRequest.class))).thenAnswer(invocation -> {
             RefundRequest refundRequest = invocation.getArgument(0);
             refundRequest.setId(UUID.randomUUID());
@@ -98,6 +106,7 @@ class RefundServiceImplTest {
         assertThat(response.getStatus()).isEqualTo(RefundStatus.pending);
         assertThat(response.getAmount()).isEqualByComparingTo("2000000");
         assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.refund_pending);
+        verify(eventPublisher, times(2)).publishEvent(any());
     }
 
     @Test

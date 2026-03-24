@@ -7,6 +7,7 @@ import com.backend.old_bicycle_project.dto.response.ReportResponseDTO;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.Report;
 import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.entity.enums.ReportStatus;
@@ -68,6 +69,7 @@ public class ReportServiceImpl implements ReportService {
                 .build();
 
         report = reportRepository.save(report);
+        publishPendingReportNotification(report);
         return mapToDTO(report);
     }
 
@@ -185,6 +187,21 @@ public class ReportServiceImpl implements ReportService {
                     metadata
             ));
         }
+    }
+
+    private void publishPendingReportNotification(Report report) {
+        String metadata = "{\"reportId\":\"" + report.getId() + "\",\"status\":\"" + report.getStatus() + "\"}";
+        userRepository.findByRole(AppRole.admin).stream()
+                .map(User::getId)
+                .distinct()
+                .forEach(adminId -> eventPublisher.publishEvent(new NotificationEvent(
+                        this,
+                        adminId,
+                        "Có báo cáo mới cần xử lý",
+                        "Hệ thống vừa nhận một báo cáo mới cho " + report.getTargetType().toLowerCase() + ".",
+                        NotificationType.system,
+                        metadata
+                )));
     }
 
     private ReportResponseDTO mapToDTO(Report report) {

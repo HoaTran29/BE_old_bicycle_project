@@ -45,7 +45,8 @@ public enum ErrorCode {
     SIZE_CHART_INVALID(1037, "Size chart data is invalid", HttpStatus.BAD_REQUEST),
     PAYMENT_EXPIRED(1038, "Payment deadline has expired for this order", HttpStatus.BAD_REQUEST),
     ASSISTANT_NOT_CONFIGURED(1039, "AI assistant is not configured for this environment", HttpStatus.SERVICE_UNAVAILABLE),
-    ASSISTANT_REQUEST_FAILED(1040, "AI assistant request failed", HttpStatus.BAD_GATEWAY);
+    ASSISTANT_REQUEST_FAILED(1040, "AI assistant request failed", HttpStatus.BAD_GATEWAY),
+    PAYOUT_PROFILE_REQUIRED(1041, "Payout profile is required before this action", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

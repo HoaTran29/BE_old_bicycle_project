@@ -11,6 +11,7 @@ import com.backend.old_bicycle_project.entity.PayoutProfile;
 import com.backend.old_bicycle_project.entity.Payment;
 import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
@@ -26,7 +27,9 @@ import com.backend.old_bicycle_project.repository.PayoutProfileRepository;
 import com.backend.old_bicycle_project.repository.PayoutRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
+import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.PayoutService;
+import com.backend.old_bicycle_project.service.ProductService;
 import com.backend.old_bicycle_project.specification.PayoutSpecification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -52,7 +55,9 @@ public class PayoutServiceImpl implements PayoutService {
     private final RefundRequestRepository refundRequestRepository;
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
+    private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final ProductService productService;
 
     @Override
     @Transactional(readOnly = true)
@@ -98,6 +103,20 @@ public class PayoutServiceImpl implements PayoutService {
         }
 
         return mapAdminPayout(completeSellerPayout(payout, currentUser, request.getBankReference(), request.getAdminNote()));
+    }
+
+    @Override
+    @Transactional
+    public AdminPayoutResponseDTO remindProfileRequiredPayout(UUID payoutId, User currentUser) {
+        Payout payout = payoutRepository.findById(payoutId)
+                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
+
+        if (payout.getStatus() != PayoutStatus.profile_required) {
+            throw new AppException(ErrorCode.PAYOUT_NOT_READY);
+        }
+
+        publishProfileRequiredNotification(payout, true);
+        return mapAdminPayout(payout);
     }
 
     @Override
@@ -158,6 +177,7 @@ public class PayoutServiceImpl implements PayoutService {
         order.setFundingStatus(OrderFundingStatus.refunded);
         order.setPaidAmount(BigDecimal.ZERO);
         order.setRemainingAmount(order.getTotalAmount());
+        productService.hideAfterRefundCompletion(order.getProduct());
 
         refundRequestRepository.save(refundRequest);
         paymentRepository.save(payment);
@@ -169,6 +189,12 @@ public class PayoutServiceImpl implements PayoutService {
                 "Hoàn tiền đã được chuyển khoản",
                 "Hệ thống đã ghi nhận giao dịch hoàn tiền thủ công cho yêu cầu của bạn.",
                 "{\"refundId\":\"" + refundRequest.getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
+        );
+        publishOrderNotification(
+                order.getSeller().getId(),
+                "Tin đăng đã bị ẩn sau khi hoàn tiền",
+                "Admin đã hoàn tất hoàn tiền cho đơn hàng này. Tin đăng liên quan đã bị ẩn và cần cập nhật, duyệt lại, rồi kiểm định lại trước khi bán tiếp.",
+                "{\"orderId\":\"" + order.getId() + "\",\"productId\":\"" + order.getProduct().getId() + "\"}"
         );
 
         return payout;
@@ -237,7 +263,8 @@ public class PayoutServiceImpl implements PayoutService {
         }
 
         pendingPayouts.forEach(payout -> applyProfileToPayout(payout, profile));
-        payoutRepository.saveAll(pendingPayouts);
+        List<Payout> savedPayouts = payoutRepository.saveAll(pendingPayouts);
+        savedPayouts.forEach(this::publishPayoutAwaitingNotification);
     }
 
     private Payout createPayout(
@@ -284,12 +311,7 @@ public class PayoutServiceImpl implements PayoutService {
     private void publishPayoutAwaitingNotification(Payout payout) {
         if (payout.getType() == PayoutType.refund) {
             if (payout.getStatus() == PayoutStatus.profile_required) {
-                publishOrderNotification(
-                        payout.getRecipient().getId(),
-                        "Cần cập nhật tài khoản nhận hoàn tiền",
-                        "Yêu cầu hoàn tiền đã được duyệt nhưng bạn cần cập nhật payout profile để admin chuyển khoản.",
-                        "{\"refundId\":\"" + payout.getRefundRequest().getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
-                );
+                publishProfileRequiredNotification(payout, false);
                 return;
             }
 
@@ -299,16 +321,16 @@ public class PayoutServiceImpl implements PayoutService {
                     "Admin đã duyệt hoàn tiền. Hệ thống đang chờ chuyển khoản thủ công cho bạn.",
                     "{\"refundId\":\"" + payout.getRefundRequest().getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
             );
+            publishAdminPayoutPendingNotification(
+                    payout,
+                    "Có payout hoàn tiền cần chuyển khoản",
+                    "Một yêu cầu hoàn tiền đã được duyệt và đang chờ admin chuyển khoản thủ công."
+            );
             return;
         }
 
         if (payout.getStatus() == PayoutStatus.profile_required) {
-            publishOrderNotification(
-                    payout.getRecipient().getId(),
-                    "Cần cập nhật tài khoản nhận giải ngân",
-                    "Đơn hàng đã hoàn tất nhưng bạn cần cập nhật payout profile trước khi nhận khoản cọc.",
-                    "{\"orderId\":\"" + payout.getOrder().getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
-            );
+            publishProfileRequiredNotification(payout, false);
             return;
         }
 
@@ -317,6 +339,48 @@ public class PayoutServiceImpl implements PayoutService {
                 "Khoản cọc đang chờ giải ngân",
                 "Đơn hàng đã hoàn tất và admin sẽ chuyển khoản thủ công khoản cọc cho bạn.",
                 "{\"orderId\":\"" + payout.getOrder().getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
+        );
+        publishAdminPayoutPendingNotification(
+                payout,
+                "Có payout cho người bán cần giải ngân",
+                "Một đơn hàng đã hoàn tất và đang chờ admin giải ngân khoản cọc cho người bán."
+        );
+    }
+
+    private void publishProfileRequiredNotification(Payout payout, boolean adminTriggeredReminder) {
+        if (payout.getType() == PayoutType.refund) {
+            publishOrderNotification(
+                    payout.getRecipient().getId(),
+                    adminTriggeredReminder
+                            ? "Admin nhắc cập nhật tài khoản nhận hoàn tiền"
+                            : "Cần cập nhật tài khoản nhận hoàn tiền",
+                    adminTriggeredReminder
+                            ? "Admin đang chờ bạn cập nhật payout profile để có thể chuyển khoản hoàn tiền."
+                            : "Yêu cầu hoàn tiền đã được duyệt nhưng bạn cần cập nhật payout profile để admin chuyển khoản.",
+                    "{\"refundId\":\"" + payout.getRefundRequest().getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
+            );
+            publishAdminPayoutProfileRequiredNotification(
+                    payout,
+                    "Payout hoàn tiền đang bị chặn vì thiếu payout profile",
+                    "Người mua chưa cập nhật payout profile nên admin chưa thể hoàn tiền thủ công."
+            );
+            return;
+        }
+
+        publishOrderNotification(
+                payout.getRecipient().getId(),
+                adminTriggeredReminder
+                        ? "Admin nhắc cập nhật tài khoản nhận giải ngân"
+                        : "Cần cập nhật tài khoản nhận giải ngân",
+                adminTriggeredReminder
+                        ? "Admin đang chờ bạn cập nhật payout profile để có thể giải ngân khoản cọc."
+                        : "Đơn hàng đã hoàn tất nhưng bạn cần cập nhật payout profile trước khi nhận khoản cọc.",
+                "{\"orderId\":\"" + payout.getOrder().getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
+        );
+        publishAdminPayoutProfileRequiredNotification(
+                payout,
+                "Payout giải ngân đang bị chặn vì thiếu payout profile",
+                "Người bán chưa cập nhật payout profile nên admin chưa thể giải ngân khoản cọc."
         );
     }
 
@@ -329,6 +393,59 @@ public class PayoutServiceImpl implements PayoutService {
                 NotificationType.order,
                 metadata
         ));
+    }
+
+    private void publishAdminPayoutPendingNotification(Payout payout, String title, String content) {
+        String metadata = buildPayoutMetadata(payout);
+
+        userRepository.findByRole(AppRole.admin).stream()
+                .map(User::getId)
+                .distinct()
+                .forEach(adminId -> eventPublisher.publishEvent(new NotificationEvent(
+                        this,
+                        adminId,
+                        title,
+                        content,
+                        NotificationType.order,
+                        metadata
+                )));
+    }
+
+    private void publishAdminPayoutProfileRequiredNotification(Payout payout, String title, String content) {
+        String metadata = buildPayoutMetadata(payout);
+
+        userRepository.findByRole(AppRole.admin).stream()
+                .map(User::getId)
+                .distinct()
+                .forEach(adminId -> eventPublisher.publishEvent(new NotificationEvent(
+                        this,
+                        adminId,
+                        title,
+                        content,
+                        NotificationType.order,
+                        metadata
+                )));
+    }
+
+    private String buildPayoutMetadata(Payout payout) {
+        return payout.getType() == PayoutType.refund
+                ? "{\"refundId\":\"" + payout.getRefundRequest().getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
+                : "{\"orderId\":\"" + payout.getOrder().getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}";
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasCompleteProfile(User user) {
+        return payoutProfileRepository.findByUserId(user.getId())
+                .map(this::isProfileComplete)
+                .orElse(false);
+    }
+
+    private boolean isProfileComplete(PayoutProfile profile) {
+        return hasText(profile.getBankCode())
+                && hasText(profile.getBankBin())
+                && hasText(profile.getAccountNumber())
+                && hasText(profile.getAccountName());
     }
 
     private PayoutProfileResponseDTO mapProfile(PayoutProfile profile) {

@@ -3,6 +3,7 @@ package com.backend.old_bicycle_project.service.impl;
 import com.backend.old_bicycle_project.dto.request.ReportProcessDTO;
 import com.backend.old_bicycle_project.dto.request.ReportRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ReportResponseDTO;
+import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.Report;
 import com.backend.old_bicycle_project.entity.User;
@@ -50,6 +51,35 @@ class ReportServiceImplTest {
 
     @InjectMocks
     private ReportServiceImpl reportService;
+
+    @Test
+    void submitReportNotifiesAdminsAboutPendingReview() {
+        UUID reporterId = UUID.randomUUID();
+        UUID targetId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User reporter = user(reporterId, AppRole.buyer);
+        User admin = user(adminId, AppRole.admin);
+
+        when(userRepository.findById(reporterId)).thenReturn(Optional.of(reporter));
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(java.util.List.of(admin));
+        when(productRepository.existsById(targetId)).thenReturn(true);
+        when(reportRepository.existsByReporterIdAndTargetIdAndStatusIn(any(), any(), any())).thenReturn(false);
+        when(reportRepository.save(any(Report.class))).thenAnswer(invocation -> {
+            Report report = invocation.getArgument(0);
+            report.setId(UUID.randomUUID());
+            return report;
+        });
+
+        ReportResponseDTO response = reportService.submitReport(reporterId, ReportRequestDTO.builder()
+                .targetId(targetId)
+                .targetType("PRODUCT")
+                .reason(ReportReason.spam)
+                .description("Listing contains suspicious content")
+                .build());
+
+        assertThat(response.getStatus()).isEqualTo(ReportStatus.pending);
+        verify(eventPublisher).publishEvent(any(NotificationEvent.class));
+    }
 
     @Test
     void submitReportRejectsDuplicateOpenReportForSameReporterAndTarget() {

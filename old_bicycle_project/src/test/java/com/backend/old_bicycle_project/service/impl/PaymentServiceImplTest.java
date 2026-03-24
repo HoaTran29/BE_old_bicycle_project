@@ -1,4 +1,4 @@
-package com.backend.old_bicycle_project.service.impl;
+﻿package com.backend.old_bicycle_project.service.impl;
 
 import com.backend.old_bicycle_project.config.SepayProperties;
 import com.backend.old_bicycle_project.dto.response.PaymentRequestResponseDTO;
@@ -265,7 +265,8 @@ class PaymentServiceImplTest {
         assertThat(response.getQrCodeUrl()).contains("970422-0363565884");
         assertThat(response.getBankAccountNumber()).isEqualTo("0363565884");
         assertThat(response.getBankAccountName()).isEqualTo("NGUYEN HOANG VIET DO");
-        assertThat(response.getInstructions()).contains("chưa hỗ trợ VA order API");
+        assertThat(response.getInstructions()).contains("OB-");
+        assertThat(response.getInstructions()).doesNotContain("VA order API");
     }
 
     @Test
@@ -398,7 +399,7 @@ class PaymentServiceImplTest {
                 {
                   "transferType": "in",
                   "transferAmount": 2000000,
-                  "content": "Nội dung chuyển khoản: OB-ORDER-STATIC-01",
+                  "content": "Ná»™i dung chuyá»ƒn khoáº£n: OB-ORDER-STATIC-01",
                   "referenceCode": "TX-CONTENT-001"
                 }
                 """, "Apikey secret-key");
@@ -725,3 +726,4 @@ class PaymentServiceImplTest {
                 .build();
     }
 }
+

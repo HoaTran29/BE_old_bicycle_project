@@ -1,5 +1,6 @@
 package com.backend.old_bicycle_project.service;
 
+import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.product.ProductCreateRequest;
 import com.backend.old_bicycle_project.dto.product.ProductFilterRequest;
 import com.backend.old_bicycle_project.dto.product.ProductResponse;
@@ -13,6 +14,8 @@ import com.backend.old_bicycle_project.entity.Inspection;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.ProductImage;
 import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.entity.enums.AppRole;
+import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.exception.AppException;
@@ -26,9 +29,11 @@ import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
+import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.specification.ProductSpecification;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -68,6 +73,8 @@ public class ProductService {
     private final FrameMaterialRepository frameMaterialRepository;
     private final GroupsetRepository groupsetRepository;
     private final InspectionRepository inspectionRepository;
+    private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final StorageService storageService;
 
     public Page<ProductResponse> searchProducts(ProductFilterRequest filter, int page, int size) {
@@ -167,6 +174,7 @@ public class ProductService {
         product.setExpiresAt(product.getCreatedAt().plusDays(30));
         product.setImages(uploadImages(product, images));
         productRepository.save(product);
+        publishAdminModerationNotification(product, "cần admin kiểm duyệt tin đăng mới");
 
         return toResponse(product);
     }
@@ -219,8 +227,10 @@ public class ProductService {
         product.setStatus(ProductStatus.pending);
         product.setExpiresAt(LocalDateTime.now().plusDays(30));
         invalidateInspection(product);
+        Product savedProduct = productRepository.save(product);
+        publishAdminModerationNotification(savedProduct, "đã được người bán cập nhật và cần kiểm duyệt lại");
 
-        return toResponse(productRepository.save(product));
+        return toResponse(savedProduct);
     }
 
     @Transactional
@@ -256,7 +266,9 @@ public class ProductService {
         product.setStatus(ProductStatus.pending);
         product.setExpiresAt(LocalDateTime.now().plusDays(30));
         invalidateInspection(product);
-        return toResponse(productRepository.save(product));
+        Product savedProduct = productRepository.save(product);
+        publishAdminModerationNotification(savedProduct, "đã được người bán hiển thị lại và cần kiểm duyệt lại");
+        return toResponse(savedProduct);
     }
 
     public Page<ProductResponse> getMyProducts(User currentUser, int page, int size) {
@@ -301,6 +313,17 @@ public class ProductService {
 
         product.setStatus(newStatus);
         return toResponse(productRepository.save(product));
+    }
+
+    @Transactional
+    public void hideAfterRefundCompletion(Product product) {
+        if (product == null || product.getDeletedAt() != null) {
+            return;
+        }
+
+        product.setStatus(ProductStatus.hidden);
+        invalidateInspection(product);
+        productRepository.save(product);
     }
 
     public ProductResponse toResponse(Product product) {
@@ -561,5 +584,22 @@ public class ProductService {
 
     private boolean hasActiveTransaction(UUID productId) {
         return orderRepository.existsByProductIdAndStatusIn(productId, ACTIVE_TRANSACTION_STATUSES);
+    }
+
+    private void publishAdminModerationNotification(Product product, String actionDescription) {
+        String productTitle = product.getTitle() != null ? product.getTitle() : "tin đăng mới";
+        String metadata = "{\"productId\":\"" + product.getId() + "\"}";
+
+        userRepository.findByRole(AppRole.admin).stream()
+                .map(User::getId)
+                .distinct()
+                .forEach(adminId -> eventPublisher.publishEvent(new NotificationEvent(
+                        this,
+                        adminId,
+                        "Có tin đăng chờ kiểm duyệt",
+                        "Tin \"" + productTitle + "\" " + actionDescription + ". Vui lòng kiểm tra và quyết định bước tiếp theo.",
+                        NotificationType.system,
+                        metadata
+                )));
     }
 }

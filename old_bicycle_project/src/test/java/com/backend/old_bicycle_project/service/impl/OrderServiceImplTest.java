@@ -116,6 +116,34 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void acceptOrderRequiresSellerPayoutProfile() {
+        User seller = user(AppRole.seller, "seller@test.dev");
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Specialized Allez")
+                .status(ProductStatus.active)
+                .build();
+        Order order = Order.builder()
+                .id(UUID.randomUUID())
+                .buyer(buyer)
+                .seller(seller)
+                .product(product)
+                .status(OrderStatus.pending)
+                .fundingStatus(OrderFundingStatus.unpaid)
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+
+        when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
+        when(payoutService.hasCompleteProfile(seller)).thenReturn(false);
+
+        assertThatThrownBy(() -> orderService.acceptOrder(order.getId(), seller))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYOUT_PROFILE_REQUIRED));
+    }
+
+    @Test
     void sellerCompleteMovesOrderToAwaitingBuyerConfirmation() {
         User seller = user(AppRole.seller, "seller@test.dev");
         User buyer = user(AppRole.buyer, "buyer@test.dev");

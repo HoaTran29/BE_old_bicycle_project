@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
@@ -21,5 +21,5 @@ public class NotificationResponseDTO {
     private NotificationType type;
     private Boolean isRead;
     private String metadata;
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 }

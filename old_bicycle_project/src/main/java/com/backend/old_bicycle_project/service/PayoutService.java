@@ -23,9 +23,13 @@ public interface PayoutService {
 
     AdminPayoutResponseDTO completePayout(UUID payoutId, User currentUser, PayoutCompleteRequestDTO request);
 
+    AdminPayoutResponseDTO remindProfileRequiredPayout(UUID payoutId, User currentUser);
+
     Payout ensureRefundPayout(RefundRequest refundRequest);
 
     Payout ensureSellerReleasePayout(Order order);
 
     Payout completeRefundPayout(Payout payout, User currentUser, String bankReference, String adminNote);
+
+    boolean hasCompleteProfile(User user);
 }

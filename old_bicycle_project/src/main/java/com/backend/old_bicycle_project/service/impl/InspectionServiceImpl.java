@@ -376,6 +376,18 @@ public class InspectionServiceImpl implements InspectionService {
                 NotificationType.inspection,
                 metadata
         ));
+
+        userRepository.findByRole(AppRole.inspector).stream()
+                .map(User::getId)
+                .distinct()
+                .forEach(inspectorId -> eventPublisher.publishEvent(new NotificationEvent(
+                        this,
+                        inspectorId,
+                        "Có tin đăng mới cần kiểm định",
+                        "Tin \"" + product.getTitle() + "\" đang chờ inspector xử lý kiểm định.",
+                        NotificationType.inspection,
+                        metadata
+                )));
     }
 
     private void publishInspectionResultNotification(Product product, Inspection inspection) {

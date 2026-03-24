@@ -1,5 +1,6 @@
 package com.backend.old_bicycle_project.service;
 
+import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.product.ProductCreateRequest;
 import com.backend.old_bicycle_project.dto.product.ProductResponse;
 import com.backend.old_bicycle_project.dto.product.ProductUpdateRequest;
@@ -23,12 +24,14 @@ import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
+import com.backend.old_bicycle_project.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -81,6 +84,12 @@ class ProductServiceTest {
     private InspectionRepository inspectionRepository;
 
     @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
+    @Mock
     private StorageService storageService;
 
     @InjectMocks
@@ -102,6 +111,7 @@ class ProductServiceTest {
     void createSetsExpiresAtAndUploadsImages() {
         ProductCreateRequest request = validCreateRequest();
         User seller = seller();
+        User admin = adminUser();
 
         when(brakeTypeRepository.findById(request.getBrakeTypeId())).thenReturn(Optional.of(BrakeType.builder()
                 .id(request.getBrakeTypeId())
@@ -125,6 +135,7 @@ class ProductServiceTest {
                 .thenReturn("https://cdn.test/bike-1.jpg", "https://cdn.test/bike-2.jpg", "https://cdn.test/bike-3.jpg");
         when(productImageRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
         when(inspectionRepository.findByProductId(any(UUID.class))).thenReturn(Optional.empty());
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(admin));
 
         ProductResponse response = productService.create(
                 request,
@@ -137,6 +148,7 @@ class ProductServiceTest {
         assertThat(response.getImages()).hasSize(3);
         assertThat(response.getCategoryId()).isNull();
         verify(productImageRepository).saveAll(anyList());
+        verify(eventPublisher).publishEvent(any(NotificationEvent.class));
     }
 
     @Test
@@ -264,6 +276,7 @@ class ProductServiceTest {
     @Test
     void showMovesHiddenProductBackToPendingAndRenewsExpiry() {
         User seller = seller();
+        User admin = adminUser();
         Product product = product(seller, ProductStatus.hidden);
         LocalDateTime previousExpiry = LocalDateTime.now().minusDays(1);
         product.setExpiresAt(previousExpiry);
@@ -278,6 +291,7 @@ class ProductServiceTest {
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.of(inspection));
         when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(admin));
 
         ProductResponse response = productService.show(product.getId(), seller);
 
@@ -286,6 +300,7 @@ class ProductServiceTest {
         assertThat(inspection.getPassed()).isFalse();
         assertThat(inspection.getValidUntil()).isNotNull();
         verify(productRepository).save(product);
+        verify(eventPublisher).publishEvent(any(NotificationEvent.class));
     }
 
     @Test
@@ -388,6 +403,7 @@ class ProductServiceTest {
     @Test
     void updateResetsStatusAndInvalidatesExistingInspection() {
         User seller = seller();
+        User admin = adminUser();
         Product product = product(seller, ProductStatus.inspected_passed);
         Inspection inspection = Inspection.builder()
                 .id(UUID.randomUUID())
@@ -403,12 +419,14 @@ class ProductServiceTest {
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.of(inspection));
         when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(admin));
 
         ProductResponse response = productService.update(product.getId(), request, null, seller);
 
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
         assertThat(inspection.getPassed()).isFalse();
         assertThat(inspection.getValidUntil()).isNotNull();
+        verify(eventPublisher).publishEvent(any(NotificationEvent.class));
     }
 
     @Test
@@ -552,6 +570,16 @@ class ProductServiceTest {
                 .firstName("Ngọc")
                 .lastName("Seller")
                 .role(AppRole.seller)
+                .build();
+    }
+
+    private User adminUser() {
+        return User.builder()
+                .id(UUID.randomUUID())
+                .email("admin@test.dev")
+                .firstName("Admin")
+                .lastName("System")
+                .role(AppRole.admin)
                 .build();
     }
 

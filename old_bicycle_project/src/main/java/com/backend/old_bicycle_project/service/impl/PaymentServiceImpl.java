@@ -1,4 +1,4 @@
-package com.backend.old_bicycle_project.service.impl;
+﻿package com.backend.old_bicycle_project.service.impl;
 
 import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.config.SepayProperties;
@@ -238,8 +238,7 @@ public class PaymentServiceImpl implements PaymentService {
                         resolvedBankAccount.bankBin(),
                         resolvedBankAccount.accountNumber(),
                         resolvedBankAccount.accountName(),
-                        "Tài khoản SePay hiện tại chưa hỗ trợ VA order API cho ngân hàng này. " +
-                                "Hệ thống dùng QR/chuyển khoản trực tiếp và vẫn xác nhận bằng webhook."
+                        buildStaticInstructions(payment)
                 );
             }
         }
@@ -953,3 +952,4 @@ public class PaymentServiceImpl implements PaymentService {
     ) {
     }
 }
+

@@ -6,6 +6,7 @@ import com.backend.old_bicycle_project.service.InspectionService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.RefundService;
 import com.backend.old_bicycle_project.service.AdminUserService;
+import com.backend.old_bicycle_project.service.ProductService;
 import com.backend.old_bicycle_project.service.SizeChartService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,6 +60,9 @@ class SecurityConfigIntegrationTest {
 
     @MockBean
     private SizeChartService sizeChartService;
+
+    @MockBean
+    private ProductService productService;
 
     @Test
     void anonymousUserCannotUpdateProfile() throws Exception {
@@ -204,6 +208,20 @@ class SecurityConfigIntegrationTest {
                         .build());
 
         mockMvc.perform(get("/api/inspections/dashboard"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "INSPECTOR")
+    void inspectorCanAccessInspectionProductContext() throws Exception {
+        when(productService.getAdminById(any())).thenReturn(
+                com.backend.old_bicycle_project.dto.product.ProductResponse.builder()
+                        .id(UUID.randomUUID())
+                        .title("Inspection target")
+                        .build()
+        );
+
+        mockMvc.perform(get("/api/inspections/product-context/11111111-1111-1111-1111-111111111111"))
                 .andExpect(status().isOk());
     }
 

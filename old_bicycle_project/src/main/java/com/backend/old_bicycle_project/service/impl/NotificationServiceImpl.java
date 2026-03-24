@@ -16,11 +16,13 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.ZoneId;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {
+    private static final ZoneId SERVER_ZONE_ID = ZoneId.systemDefault();
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
@@ -98,7 +100,9 @@ public class NotificationServiceImpl implements NotificationService {
                 .type(notification.getType())
                 .isRead(notification.getIsRead())
                 .metadata(notification.getMetadata())
-                .createdAt(notification.getCreatedAt())
+                .createdAt(notification.getCreatedAt() != null
+                        ? notification.getCreatedAt().atZone(SERVER_ZONE_ID).toOffsetDateTime()
+                        : null)
                 .build();
     }
 }

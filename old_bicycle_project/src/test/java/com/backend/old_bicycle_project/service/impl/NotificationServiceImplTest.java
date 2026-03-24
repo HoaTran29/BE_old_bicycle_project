@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -74,6 +75,11 @@ class NotificationServiceImplTest {
         assertThat(response.getTitle()).isEqualTo("Cập nhật order");
         assertThat(response.getType()).isEqualTo(NotificationType.order);
         assertThat(response.getIsRead()).isFalse();
+        assertThat(response.getCreatedAt()).isEqualTo(
+                LocalDateTime.of(2026, 3, 13, 10, 15)
+                        .atZone(ZoneId.systemDefault())
+                        .toOffsetDateTime()
+        );
     }
 
     @Test

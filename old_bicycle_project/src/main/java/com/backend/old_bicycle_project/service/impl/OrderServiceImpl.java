@@ -134,6 +134,9 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() != OrderStatus.pending) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
+        if (!payoutService.hasCompleteProfile(order.getSeller())) {
+            throw new AppException(ErrorCode.PAYOUT_PROFILE_REQUIRED);
+        }
 
         order.setAcceptedAt(LocalDateTime.now());
         order.setPaymentDeadline(LocalDateTime.now().plusHours(24));

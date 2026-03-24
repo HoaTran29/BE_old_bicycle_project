@@ -56,4 +56,16 @@ public class AdminPayoutController {
                 .result(payoutService.completePayout(payoutId, currentUser, request))
                 .build();
     }
+
+    @PatchMapping("/{payoutId}/remind-profile")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<AdminPayoutResponseDTO> remindProfileRequiredPayout(
+            @PathVariable UUID payoutId,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        return ApiResponse.<AdminPayoutResponseDTO>builder()
+                .message("Payout profile reminder sent successfully")
+                .result(payoutService.remindProfileRequiredPayout(payoutId, currentUser))
+                .build();
+    }
 }

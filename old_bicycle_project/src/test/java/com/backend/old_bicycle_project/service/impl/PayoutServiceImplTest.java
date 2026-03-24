@@ -16,11 +16,14 @@ import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutType;
 import com.backend.old_bicycle_project.entity.enums.RefundStatus;
+import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PayoutProfileRepository;
 import com.backend.old_bicycle_project.repository.PayoutRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
+import com.backend.old_bicycle_project.repository.UserRepository;
+import com.backend.old_bicycle_project.service.ProductService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -36,6 +39,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -62,14 +66,22 @@ class PayoutServiceImplTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private ProductService productService;
+
     @InjectMocks
     private PayoutServiceImpl payoutService;
 
     @Test
     void upsertMyProfileHydratesExistingProfileRequiredPayouts() {
         User seller = user(AppRole.seller, "seller@test.dev");
+        Order order = completedOrderForSellerPayout(seller);
         Payout payout = Payout.builder()
                 .id(UUID.randomUUID())
+                .order(order)
                 .recipient(seller)
                 .type(PayoutType.seller_release)
                 .status(PayoutStatus.profile_required)
@@ -86,6 +98,7 @@ class PayoutServiceImplTest {
         when(payoutRepository.findByRecipientIdAndStatusOrderByCreatedAtAsc(seller.getId(), PayoutStatus.profile_required))
                 .thenReturn(List.of(payout));
         when(payoutRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(user(AppRole.admin, "admin@test.dev")));
 
         var response = payoutService.upsertMyProfile(seller, com.backend.old_bicycle_project.dto.request.PayoutProfileUpsertRequestDTO.builder()
                 .bankCode("TPBank")
@@ -112,13 +125,14 @@ class PayoutServiceImplTest {
             payout.setId(UUID.randomUUID());
             return payout;
         });
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(user(AppRole.admin, "admin@test.dev")));
 
         Payout payout = payoutService.ensureRefundPayout(refundRequest);
 
         assertThat(payout.getStatus()).isEqualTo(PayoutStatus.profile_required);
         assertThat(payout.getQrCodeUrl()).isNull();
         assertThat(payout.getTransferContent()).startsWith("RF-");
-        verify(eventPublisher).publishEvent(any());
+        verify(eventPublisher, times(2)).publishEvent(any());
     }
 
     @Test
@@ -141,6 +155,7 @@ class PayoutServiceImplTest {
             payout.setId(UUID.randomUUID());
             return payout;
         });
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(user(AppRole.admin, "admin@test.dev")));
 
         Payout payout = payoutService.ensureSellerReleasePayout(order);
 
@@ -192,7 +207,8 @@ class PayoutServiceImplTest {
         assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.refunded);
         assertThat(refundRequest.getStatus()).isEqualTo(RefundStatus.completed);
         assertThat(refundRequest.getRefundReference()).isEqualTo("RF-20260319-01");
-        verify(eventPublisher).publishEvent(any());
+        verify(eventPublisher, times(2)).publishEvent(any());
+        verify(productService).hideAfterRefundCompletion(order.getProduct());
     }
 
     @Test
@@ -226,6 +242,48 @@ class PayoutServiceImplTest {
         assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.released);
         assertThat(response.getBankReference()).isEqualTo("SL-20260319-01");
         verify(eventPublisher).publishEvent(any());
+    }
+
+    @Test
+    void remindProfileRequiredPayoutPublishesReminderAndReturnsDto() {
+        User admin = user(AppRole.admin, "admin@test.dev");
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Payout payout = Payout.builder()
+                .id(UUID.randomUUID())
+                .type(PayoutType.refund)
+                .status(PayoutStatus.profile_required)
+                .recipient(buyer)
+                .amount(new BigDecimal("2000000"))
+                .refundRequest(refundRequest(buyer))
+                .build();
+
+        when(payoutRepository.findById(payout.getId())).thenReturn(Optional.of(payout));
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(user(AppRole.admin, "admin@test.dev")));
+
+        var response = payoutService.remindProfileRequiredPayout(payout.getId(), admin);
+
+        assertThat(response.getId()).isEqualTo(payout.getId());
+        assertThat(response.getStatus()).isEqualTo(PayoutStatus.profile_required);
+        verify(eventPublisher, times(2)).publishEvent(any());
+    }
+
+    @Test
+    void remindProfileRequiredPayoutRejectsNonProfileRequiredStatus() {
+        User admin = user(AppRole.admin, "admin@test.dev");
+        Payout payout = Payout.builder()
+                .id(UUID.randomUUID())
+                .type(PayoutType.refund)
+                .status(PayoutStatus.pending_transfer)
+                .recipient(user(AppRole.buyer, "buyer@test.dev"))
+                .amount(new BigDecimal("2000000"))
+                .build();
+
+        when(payoutRepository.findById(payout.getId())).thenReturn(Optional.of(payout));
+
+        assertThatThrownBy(() -> payoutService.remindProfileRequiredPayout(payout.getId(), admin))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(com.backend.old_bicycle_project.exception.ErrorCode.PAYOUT_NOT_READY);
     }
 
     private RefundRequest refundRequest(User buyer) {
