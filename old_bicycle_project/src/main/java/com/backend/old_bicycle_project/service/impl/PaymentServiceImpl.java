@@ -7,20 +7,25 @@ import com.backend.old_bicycle_project.dto.response.PaymentRequestResponseDTO;
 import com.backend.old_bicycle_project.dto.response.PaymentResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Payment;
+import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
+import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentGateway;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentPhase;
 import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
+import com.backend.old_bicycle_project.entity.enums.RefundStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
+import com.backend.old_bicycle_project.repository.RefundRequestRepository;
 import com.backend.old_bicycle_project.service.PaymentService;
+import com.backend.old_bicycle_project.service.PayoutService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -61,13 +66,17 @@ public class PaymentServiceImpl implements PaymentService {
             Pattern.compile("(?i)OB-[A-Z0-9-]{5,40}");
     private static final Pattern COMPACT_GATEWAY_ORDER_CODE_PATTERN =
             Pattern.compile("(?i)OB[A-Z0-9]{18}");
+    private static final List<PaymentStatus> OPEN_UPFRONT_PAYMENT_STATUSES =
+            List.of(PaymentStatus.pending, PaymentStatus.processing);
 
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
+    private final RefundRequestRepository refundRequestRepository;
     private final SepayProperties sepayProperties;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final RestTemplate restTemplate;
+    private final PayoutService payoutService;
 
     @Override
     @Transactional
@@ -85,7 +94,8 @@ public class PaymentServiceImpl implements PaymentService {
             throw new AppException(ErrorCode.PAYMENT_NOT_READY);
         }
         if (order.getPaymentDeadline().isBefore(LocalDateTime.now())) {
-            throw new AppException(ErrorCode.PAYMENT_NOT_READY);
+            expireOrderDueToPaymentTimeout(order, LocalDateTime.now());
+            throw new AppException(ErrorCode.PAYMENT_EXPIRED);
         }
         if (order.getFundingStatus() == OrderFundingStatus.held
                 || order.getFundingStatus() == OrderFundingStatus.released
@@ -105,7 +115,10 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         Payment payment = existingPayment;
-        if (payment == null || payment.getStatus() == PaymentStatus.failed || payment.getStatus() == PaymentStatus.refunded) {
+        if (payment == null
+                || payment.getStatus() == PaymentStatus.failed
+                || payment.getStatus() == PaymentStatus.refunded
+                || payment.getStatus() == PaymentStatus.expired) {
             payment = paymentRepository.save(Payment.builder()
                     .order(order)
                     .amount(order.getRequiredUpfrontAmount())
@@ -128,6 +141,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (provisionResult.gatewayResponse() != null) {
             payment.setGatewayResponse(provisionResult.gatewayResponse());
         }
+        payment.setExpiresAt(provisionResult.expiresAt());
         payment = paymentRepository.save(payment);
 
         return PaymentRequestResponseDTO.builder()
@@ -182,6 +196,33 @@ public class PaymentServiceImpl implements PaymentService {
                 webhookPayload.paymentDate(),
                 webhookPayload.rawPayload()
         );
+    }
+
+    @Override
+    @Transactional
+    public int expireOverdueUpfrontPayments() {
+        LocalDateTime now = LocalDateTime.now();
+        List<Order> overdueOrders = orderRepository.findByStatusAndFundingStatusAndPaymentDeadlineBefore(
+                OrderStatus.pending,
+                OrderFundingStatus.awaiting_payment,
+                now
+        );
+        if (overdueOrders.isEmpty()) {
+            return 0;
+        }
+
+        List<UUID> orderIds = overdueOrders.stream().map(Order::getId).toList();
+        Map<UUID, List<Payment>> paymentsByOrderId = paymentRepository
+                .findByOrderIdInAndPhaseAndStatusIn(orderIds, PaymentPhase.upfront, OPEN_UPFRONT_PAYMENT_STATUSES)
+                .stream()
+                .collect(java.util.stream.Collectors.groupingBy(payment -> payment.getOrder().getId()));
+
+        overdueOrders.forEach(order -> expireOrderDueToPaymentTimeout(
+                order,
+                now,
+                paymentsByOrderId.getOrDefault(order.getId(), List.of())
+        ));
+        return overdueOrders.size();
     }
 
     private PaymentProvisionResult provisionPayment(Order order, Payment payment) {
@@ -318,6 +359,10 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal newPaid = currentPaid.add(payment.getAmount());
         order.setPaidAmount(newPaid);
         order.setRemainingAmount(maxZero(order.getTotalAmount().subtract(newPaid)));
+        if (order.getStatus() == OrderStatus.cancelled) {
+            handleLatePaymentForCancelledOrder(order, payment);
+            return;
+        }
         if (newPaid.compareTo(order.getRequiredUpfrontAmount()) >= 0) {
             order.setStatus(OrderStatus.deposited);
             order.setFundingStatus(OrderFundingStatus.held);
@@ -638,6 +683,94 @@ public class PaymentServiceImpl implements PaymentService {
                 + ".";
     }
 
+    private void expireOrderDueToPaymentTimeout(Order order, LocalDateTime now) {
+        List<Payment> openPayments = paymentRepository.findByOrderIdAndPhaseAndStatusIn(
+                order.getId(),
+                PaymentPhase.upfront,
+                OPEN_UPFRONT_PAYMENT_STATUSES
+        );
+        expireOrderDueToPaymentTimeout(order, now, openPayments);
+    }
+
+    private void expireOrderDueToPaymentTimeout(Order order, LocalDateTime now, List<Payment> openPayments) {
+        if (order.getStatus() == OrderStatus.cancelled && order.getCancelReason() == OrderCancelReason.payment_expired) {
+            return;
+        }
+
+        order.setStatus(OrderStatus.cancelled);
+        order.setFundingStatus(OrderFundingStatus.unpaid);
+        order.setCancelReason(OrderCancelReason.payment_expired);
+        order.setCancelledAt(now);
+        orderRepository.save(order);
+
+        if (!openPayments.isEmpty()) {
+            LocalDateTime expiresAt = order.getPaymentDeadline() != null ? order.getPaymentDeadline() : now;
+            openPayments.forEach(payment -> {
+                payment.setStatus(PaymentStatus.expired);
+                payment.setExpiresAt(expiresAt);
+            });
+            paymentRepository.saveAll(openPayments);
+        }
+
+        publishOrderNotification(
+                order.getBuyer().getId(),
+                "Đơn hàng đã hết hạn thanh toán",
+                "Bạn chưa hoàn tất thanh toán đúng hạn nên hệ thống đã tự hủy đơn hàng này.",
+                "{\"orderId\":\"" + order.getId() + "\"}"
+        );
+        publishOrderNotification(
+                order.getSeller().getId(),
+                "Đơn hàng tự hủy vì quá hạn thanh toán",
+                "Người mua chưa thanh toán đúng hạn nên hệ thống đã tự hủy đơn hàng này.",
+                "{\"orderId\":\"" + order.getId() + "\"}"
+        );
+    }
+
+    private void handleLatePaymentForCancelledOrder(Order order, Payment payment) {
+        BigDecimal paidAmount = order.getPaidAmount() != null ? order.getPaidAmount() : payment.getAmount();
+        order.setPaidAmount(paidAmount);
+        order.setRemainingAmount(maxZero(order.getTotalAmount().subtract(paidAmount)));
+        order.setFundingStatus(OrderFundingStatus.refund_pending_transfer);
+
+        RefundRequest refundRequest = refundRequestRepository.findFirstByOrderIdOrderByCreatedAtDesc(order.getId())
+                .orElseGet(() -> RefundRequest.builder()
+                        .order(order)
+                        .payment(payment)
+                        .requester(order.getBuyer())
+                        .amount(paidAmount)
+                        .reason("Hệ thống tự tạo hoàn tiền vì thanh toán đến sau khi đơn hàng đã bị hủy.")
+                        .evidenceNote("Late payment received after order cancellation/expiry.")
+                        .status(RefundStatus.approved)
+                        .adminNote("Tự động duyệt hoàn tiền vì hệ thống nhận thanh toán sau khi đơn đã hết hạn hoặc bị hủy.")
+                        .reviewedAt(LocalDateTime.now())
+                        .build());
+
+        refundRequest.setPayment(payment);
+        refundRequest.setAmount(paidAmount);
+        refundRequest.setStatus(RefundStatus.approved);
+        refundRequest.setAdminNote(
+                "Tự động duyệt hoàn tiền vì hệ thống nhận thanh toán sau khi đơn đã hết hạn hoặc bị hủy."
+        );
+        refundRequest.setReviewedAt(refundRequest.getReviewedAt() != null ? refundRequest.getReviewedAt() : LocalDateTime.now());
+
+        refundRequest = refundRequestRepository.save(refundRequest);
+        orderRepository.save(order);
+        payoutService.ensureRefundPayout(refundRequest);
+
+        publishOrderNotification(
+                order.getBuyer().getId(),
+                "Thanh toán đến muộn, hệ thống sẽ hoàn tiền",
+                "Hệ thống nhận được khoản thanh toán sau khi đơn đã hết hạn hoặc bị hủy. Khoản tiền này sẽ được hoàn thủ công cho bạn.",
+                "{\"orderId\":\"" + order.getId() + "\",\"paymentId\":\"" + payment.getId() + "\"}"
+        );
+        publishOrderNotification(
+                order.getSeller().getId(),
+                "Đơn hàng nhận thanh toán muộn sau khi đã hủy",
+                "Hệ thống đã nhận được thanh toán sau khi đơn bị hủy. Khoản tiền này sẽ được hoàn lại cho người mua, đơn hàng không được khôi phục.",
+                "{\"orderId\":\"" + order.getId() + "\",\"paymentId\":\"" + payment.getId() + "\"}"
+        );
+    }
+
     private boolean isBidvAccount(ResolvedBankAccount resolvedBankAccount) {
         String bankCode = firstNonBlank(resolvedBankAccount.bankCode(), resolvedBankAccount.bankShortName());
         return hasText(bankCode) && bankCode.toUpperCase().contains("BIDV");
@@ -697,6 +830,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .checkoutUrl(payment.getCheckoutUrl())
                 .qrCodeUrl(payment.getQrCodeUrl())
                 .paymentDate(payment.getPaymentDate())
+                .expiresAt(payment.getExpiresAt())
                 .createdAt(payment.getCreatedAt())
                 .build();
     }

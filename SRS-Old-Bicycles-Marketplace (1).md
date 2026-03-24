@@ -7,8 +7,8 @@
 |**Field**|**Value**|
 | :- | :- |
 |**Project Name**|Old Bicycles Marketplace|
-|**Document Version**|4\.0|
-|**Date**|2026-03-20|
+|**Document Version**|4\.1|
+|**Date**|2026-03-24|
 |**Author**|Development Team|
 |**Status**|Draft|
 ## **Revision History**
@@ -19,6 +19,7 @@
 |2\.0|2026-01-21|Dev Team|Added Business Rules, Guest actor, detailed Use Cases, updated DB schema|
 |3\.0|2026-01-28|Dev Team|Added Business Rules, updated DB schema|
 |4\.0|2026-03-20|Dev Team|Synced mandatory inspection before public, manual payout/refund flow, seller reply review, and order evidence uploads|
+|4\.1|2026-03-24|Dev Team|Synced groupset, size chart, payment timeout/expiry, and AI assistant mức 2 qua Spring Boot + Vercel AI Gateway|
 
 
 # **1. Introduction**
@@ -106,7 +107,7 @@ Tài liệu được tổ chức như sau:
 |INT-001|Payment Gateway|Xử lý thanh toán online đặt cọc/mua xe|REST API / HTTPS|
 |INT-002|Logistics API|Kết nối đơn vị vận chuyển|REST API|
 |INT-003|Notification Service|Gửi email, SMS, push notification|WebSocket / REST|
-|INT-004|Chatbot AI|Hỗ trợ chăm sóc khách hàng tự động|REST API|
+|INT-004|Chatbot AI|Hỗ trợ chăm sóc khách hàng tự động theo context user qua Spring Boot backend và Vercel AI Gateway|REST API|
 |INT-005|Image Storage|Lưu trữ ảnh, video xe|Cloud Storage API|
 ### **2.1.3 User Interfaces**
 - **Responsive Web Application**: Hỗ trợ Desktop, Tablet, Mobile
@@ -152,7 +153,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |F-011|Admin Dashboard|Quản lý toàn bộ hệ thống|Must|
 |F-012|Report System|Báo cáo tin đăng/user vi phạm|Must|
 |F-013|Notification System|Thông báo real-time|Must|
-|F-014|Chatbot Support|Hỗ trợ khách hàng tự động|Could|
+|F-014|Chatbot Support|Trợ lý AI mức 2 giải thích order, listing, inspection, refund và payout theo context thật của user đang đăng nhập|Could|
 |F-015|Logistics Integration|Kết nối vận chuyển|Could|
 |F-016|Online Payment|Thanh toán trực tuyến|Could|
 ## **2.3 User Characteristics**
@@ -305,6 +306,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |UI-010|Admin Dashboard|Quản trị toàn hệ thống|
 |UI-011|Report Form|Form báo cáo vi phạm|
 |UI-012|Notification Center|Trung tâm thông báo|
+|UI-013|Assistant Page|Trang trò chuyện với trợ lý AI theo context tài khoản|
 ### **3.2.2 API Interfaces**
 
 |**API-ID**|**Endpoint Group**|**Description**|
@@ -325,6 +327,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |API-014|/categories/\*|Category management|
 |API-015|/payout-profiles/\*|Buyer/Seller payout profile management|
 |API-016|/admin/payouts/\*|Admin manual payout completion|
+|API-017|/assistant/\*|AI assistant chat via backend proxy|
 
 
 ## **3.3 Functional Requirements**
@@ -766,6 +769,9 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 - payment\_method
 - status: Pending → Deposited → Awaiting Buyer Confirmation → Completed / Cancelled
 - funding\_status: Unpaid → Awaiting Payment → Held → Seller Payout Pending / Refund Pending Transfer → Released / Refunded
+- Khi seller chấp nhận đơn, hệ thống tạo `payment_deadline` cho khoản thanh toán ứng trước
+- Nếu buyer không thanh toán đúng hạn, scheduler backend tự đổi đơn sang `cancelled` với `cancel_reason = payment_expired`
+- Nếu webhook nhận tiền đến sau khi đơn đã hết hạn/hủy, hệ thống không khôi phục đơn; thay vào đó tự tạo nhánh `refund_pending_transfer` để hoàn tiền thủ công cho buyer
 
 
 
@@ -832,8 +838,25 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Description**|User shall có thể xem tất cả thông báo và đánh dấu đã đọc|
 |**Priority**|Must|
 
+### **3.3.8 Chatbot Support (NEW)**
+#### **FR-AI-001: Context-Aware Assistant**
 
-### **3.3.8 Admin Management**
+|**Attribute**|**Value**|
+| :- | :- |
+|**ID**|FR-AI-001|
+|**Description**|User đã đăng nhập shall có thể hỏi trợ lý AI về trạng thái đơn hàng, listing, inspection, refund hoặc payout dựa trên context thật của tài khoản hiện tại|
+|**Priority**|Could|
+
+**Behavior:**
+
+- FE gửi lịch sử hội thoại ngắn lên backend qua `/api/assistant/chat`
+- Backend lấy context thật của user hiện tại: role, order gần đây, listing gần đây, inspection summary, refund/payout summary và unread notifications
+- Backend gọi Vercel AI Gateway theo kiểu server-side; không lộ API key ở browser
+- Assistant chỉ giải thích và hướng dẫn theo dữ liệu hiện có, không tự thực hiện action thay user
+- Nếu context không đủ hoặc AI Gateway chưa cấu hình, hệ thống phải trả thông báo rõ ràng thay vì bịa dữ liệu
+
+
+### **3.3.9 Admin Management**
 #### **FR-ADM-001: User Management**
 
 |**Attribute**|**Value**|
@@ -1182,7 +1205,10 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**payment\_method**|ENUM|Nullable|Phương thức: transfer, cash, online.|
 |**accepted\_at**|TIMESTAMP|Nullable|Thời điểm seller chấp nhận đơn.|
 |**payment\_deadline**|TIMESTAMP|Nullable|Hạn cuối buyer phải hoàn tất khoản trả trước.|
+|**cancel\_reason**|ENUM|Nullable|Lý do hủy đơn: buyer\_cancelled, seller\_cancelled, admin\_cancelled, payment\_expired.|
+|**cancelled\_at**|TIMESTAMP|Nullable|Thời điểm đơn hàng bị hủy.|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo đơn.|
+|**updated\_at**|TIMESTAMP|Default: Now()|Thời gian cập nhật đơn gần nhất.|
 
 ### **refund_requests**
 
@@ -1281,13 +1307,19 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**id**|UUID|PK, Not Null|Khóa chính giao dịch thanh toán.|
 |**order\_id**|UUID|FK -> Orders.id, Not Null|ID đơn hàng liên quan.|
 |**amount**|NUMERIC|Not Null|Số tiền thanh toán thực tế.|
+|**gateway**|ENUM|Not Null|Cổng thanh toán: manual, sepay...|
 |**method**|ENUM|Not Null|Phương thức thanh toán (online, transfer...).|
-|**status**|ENUM|Default: 'pending'|pending, processing, success, failed, refunded.|
+|**phase**|ENUM|Not Null|Giai đoạn thanh toán: upfront hoặc remaining.|
+|**status**|ENUM|Default: 'pending'|pending, processing, success, failed, expired, refunded.|
 |**gateway\_order\_code**|VARCHAR|Nullable|Mã nội bộ dùng để đối chiếu webhook từ cổng thanh toán.|
 |**transaction\_reference**|VARCHAR|Unique|Mã giao dịch từ bên thứ 3 (Momo/VNPay/Stripe).|
+|**checkout\_url**|TEXT|Nullable|Link checkout do gateway trả về nếu có.|
+|**qr\_code\_url**|TEXT|Nullable|Link QR thanh toán hiện cho buyer.|
 |**gateway\_response**|JSONB|Nullable|Dữ liệu phản hồi nguyên bản từ cổng thanh toán.|
 |**payment\_date**|TIMESTAMP|Nullable|Thời gian thanh toán thành công.|
+|**expires\_at**|TIMESTAMP|Nullable|Thời điểm yêu cầu thanh toán hết hiệu lực ở phía hệ thống/gateway.|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo yêu cầu thanh toán.|
+|**updated\_at**|TIMESTAMP|Default: Now()|Thời gian cập nhật payment gần nhất.|
 
 ### **payout_profiles**
 

@@ -36,4 +36,6 @@ public interface PayoutRepository extends JpaRepository<Payout, UUID>, JpaSpecif
 
     @EntityGraph(attributePaths = {"recipient", "order", "refundRequest"})
     List<Payout> findByRecipientIdAndStatusOrderByCreatedAtAsc(UUID recipientId, PayoutStatus status);
+
+    long countByStatus(PayoutStatus status);
 }

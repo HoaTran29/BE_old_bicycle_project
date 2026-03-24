@@ -10,6 +10,7 @@ import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
+import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
 import com.backend.old_bicycle_project.entity.enums.OrderEvidenceType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
@@ -162,6 +163,14 @@ public class OrderServiceImpl implements OrderService {
         if (order.getPaymentMethod() != PaymentMethod.cash) {
             throw new AppException(ErrorCode.PAYMENT_METHOD_NOT_SUPPORTED);
         }
+        if (order.getPaymentDeadline() != null && order.getPaymentDeadline().isBefore(LocalDateTime.now())) {
+            order.setStatus(OrderStatus.cancelled);
+            order.setFundingStatus(OrderFundingStatus.unpaid);
+            order.setCancelReason(OrderCancelReason.payment_expired);
+            order.setCancelledAt(LocalDateTime.now());
+            orderRepository.save(order);
+            throw new AppException(ErrorCode.PAYMENT_EXPIRED);
+        }
 
         order.setStatus(OrderStatus.deposited);
         order.setAcceptedAt(order.getAcceptedAt() != null ? order.getAcceptedAt() : LocalDateTime.now());
@@ -275,6 +284,14 @@ public class OrderServiceImpl implements OrderService {
         if (order.getFundingStatus() == OrderFundingStatus.awaiting_payment) {
             order.setFundingStatus(OrderFundingStatus.unpaid);
         }
+        order.setCancelledAt(LocalDateTime.now());
+        if (currentUser.getRole() == AppRole.admin) {
+            order.setCancelReason(OrderCancelReason.admin_cancelled);
+        } else if (order.getSeller().getId().equals(currentUser.getId())) {
+            order.setCancelReason(OrderCancelReason.seller_cancelled);
+        } else {
+            order.setCancelReason(OrderCancelReason.buyer_cancelled);
+        }
         return mapToDTO(orderRepository.save(order));
     }
 
@@ -367,6 +384,8 @@ public class OrderServiceImpl implements OrderService {
                 .buyerReceiptEvidence(evidenceByType.get(OrderEvidenceType.buyer_receipt))
                 .acceptedAt(order.getAcceptedAt())
                 .paymentDeadline(order.getPaymentDeadline())
+                .cancelReason(order.getCancelReason())
+                .cancelledAt(order.getCancelledAt())
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
                 .build();

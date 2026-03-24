@@ -20,5 +20,9 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     Optional<Payment> findFirstByOrderIdAndPhaseOrderByCreatedAtDesc(UUID orderId, PaymentPhase phase);
 
+    List<Payment> findByOrderIdAndPhaseAndStatusIn(UUID orderId, PaymentPhase phase, Collection<PaymentStatus> statuses);
+
+    List<Payment> findByOrderIdInAndPhaseAndStatusIn(Collection<UUID> orderIds, PaymentPhase phase, Collection<PaymentStatus> statuses);
+
     boolean existsByOrderIdAndPhaseAndStatusIn(UUID orderId, PaymentPhase phase, Collection<PaymentStatus> statuses);
 }

@@ -1,6 +1,7 @@
 package com.backend.old_bicycle_project.entity;
 
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
+import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
@@ -84,6 +85,13 @@ public class Order {
 
     @Column(name = "payment_deadline")
     private LocalDateTime paymentDeadline;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancel_reason")
+    private OrderCancelReason cancelReason;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

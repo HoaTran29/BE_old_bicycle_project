@@ -42,7 +42,10 @@ public enum ErrorCode {
     ORDER_EVIDENCE_LIMIT_EXCEEDED(1034, "You can upload up to 3 evidence images", HttpStatus.BAD_REQUEST),
     ORDER_EVIDENCE_IMAGE_ONLY(1035, "Only image files are allowed for order evidence", HttpStatus.BAD_REQUEST),
     SIZE_CHART_ALREADY_EXISTS(1036, "This category already has a size chart", HttpStatus.CONFLICT),
-    SIZE_CHART_INVALID(1037, "Size chart data is invalid", HttpStatus.BAD_REQUEST);
+    SIZE_CHART_INVALID(1037, "Size chart data is invalid", HttpStatus.BAD_REQUEST),
+    PAYMENT_EXPIRED(1038, "Payment deadline has expired for this order", HttpStatus.BAD_REQUEST),
+    ASSISTANT_NOT_CONFIGURED(1039, "AI assistant is not configured for this environment", HttpStatus.SERVICE_UNAVAILABLE),
+    ASSISTANT_REQUEST_FAILED(1040, "AI assistant request failed", HttpStatus.BAD_GATEWAY);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

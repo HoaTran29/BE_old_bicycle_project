@@ -1,10 +1,12 @@
 package com.backend.old_bicycle_project.security;
 
 import com.backend.old_bicycle_project.dto.response.AdminUserResponseDTO;
+import com.backend.old_bicycle_project.service.GroupsetService;
 import com.backend.old_bicycle_project.service.InspectionService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.RefundService;
 import com.backend.old_bicycle_project.service.AdminUserService;
+import com.backend.old_bicycle_project.service.SizeChartService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -22,10 +24,15 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @SpringBootTest(properties = "spring.flyway.enabled=false")
 @AutoConfigureMockMvc
@@ -46,6 +53,12 @@ class SecurityConfigIntegrationTest {
 
     @MockBean
     private PayoutService payoutService;
+
+    @MockBean
+    private GroupsetService groupsetService;
+
+    @MockBean
+    private SizeChartService sizeChartService;
 
     @Test
     void anonymousUserCannotUpdateProfile() throws Exception {
@@ -83,7 +96,14 @@ class SecurityConfigIntegrationTest {
 
     @Test
     void anonymousUserCannotConfirmOrderReceipt() throws Exception {
-        mockMvc.perform(patch("/api/orders/11111111-1111-1111-1111-111111111111/confirm-received"))
+        mockMvc.perform(
+                        multipart("/api/orders/11111111-1111-1111-1111-111111111111/confirm-received")
+                                .with(request -> {
+                                    request.setMethod("PATCH");
+                                    return request;
+                                })
+                                .contentType(MediaType.MULTIPART_FORM_DATA)
+                )
                 .andExpect(status().isUnauthorized());
     }
 
@@ -142,6 +162,22 @@ class SecurityConfigIntegrationTest {
     }
 
     @Test
+    void anonymousUserCanAccessPublicGroupsets() throws Exception {
+        when(groupsetService.getAll()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/groupsets"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void anonymousUserCanAccessPublicSizeChartByCategory() throws Exception {
+        when(sizeChartService.getByCategory(any(UUID.class))).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/size-charts/category/11111111-1111-1111-1111-111111111111"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     @WithMockUser(roles = "BUYER")
     void buyerCannotAccessInspectionRequests() throws Exception {
         mockMvc.perform(get("/api/inspections/requests"))
@@ -174,7 +210,14 @@ class SecurityConfigIntegrationTest {
     @Test
     @WithMockUser(roles = "SELLER")
     void sellerCannotConfirmOrderReceipt() throws Exception {
-        mockMvc.perform(patch("/api/orders/11111111-1111-1111-1111-111111111111/confirm-received"))
+        mockMvc.perform(
+                        multipart("/api/orders/11111111-1111-1111-1111-111111111111/confirm-received")
+                                .with(request -> {
+                                    request.setMethod("PATCH");
+                                    return request;
+                                })
+                                .contentType(MediaType.MULTIPART_FORM_DATA)
+                )
                 .andExpect(status().isForbidden());
     }
 

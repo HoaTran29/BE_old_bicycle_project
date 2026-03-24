@@ -4,17 +4,25 @@ import com.backend.old_bicycle_project.config.SepayProperties;
 import com.backend.old_bicycle_project.dto.response.PaymentRequestResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Payment;
+import com.backend.old_bicycle_project.entity.Payout;
+import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
+import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
+import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
+import com.backend.old_bicycle_project.entity.enums.PayoutType;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentPhase;
 import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
+import com.backend.old_bicycle_project.entity.enums.RefundStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
+import com.backend.old_bicycle_project.repository.RefundRequestRepository;
+import com.backend.old_bicycle_project.service.PayoutService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,10 +59,16 @@ class PaymentServiceImplTest {
     private OrderRepository orderRepository;
 
     @Mock
+    private RefundRequestRepository refundRequestRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @Mock
     private RestTemplate restTemplate;
+
+    @Mock
+    private PayoutService payoutService;
 
     private SepayProperties properties;
 
@@ -71,10 +85,12 @@ class PaymentServiceImplTest {
         paymentService = new PaymentServiceImpl(
                 paymentRepository,
                 orderRepository,
+                refundRequestRepository,
                 properties,
                 new ObjectMapper(),
                 eventPublisher,
-                restTemplate
+                restTemplate,
+                payoutService
         );
     }
 
@@ -550,6 +566,106 @@ class PaymentServiceImplTest {
         assertThat(payment.getTransactionReference()).isEqualTo("TX-OLD");
         verify(paymentRepository, never()).save(any(Payment.class));
         verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void createUpfrontPaymentRequestExpiresOrderWhenDeadlinePassed() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        order.setPaymentDeadline(LocalDateTime.now().minusMinutes(5));
+        Payment openPayment = processingPayment(order, "OB-ORDER-EXPIRED-01");
+
+        when(orderRepository.findByIdAndBuyerId(order.getId(), buyer.getId())).thenReturn(Optional.of(order));
+        when(paymentRepository.findByOrderIdAndPhaseAndStatusIn(eq(order.getId()), eq(PaymentPhase.upfront), any()))
+                .thenReturn(java.util.List.of(openPayment));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> paymentService.createUpfrontPaymentRequest(order.getId(), buyer))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_EXPIRED));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.cancelled);
+        assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.unpaid);
+        assertThat(order.getCancelReason()).isEqualTo(OrderCancelReason.payment_expired);
+        assertThat(order.getCancelledAt()).isNotNull();
+        assertThat(openPayment.getStatus()).isEqualTo(PaymentStatus.expired);
+        verify(eventPublisher, times(2)).publishEvent(any());
+    }
+
+    @Test
+    void expireOverdueUpfrontPaymentsCancelsOrderAndExpiresPayments() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        order.setPaymentDeadline(LocalDateTime.now().minusMinutes(2));
+        Payment openPayment = processingPayment(order, "OB-ORDER-BATCH-01");
+
+        when(orderRepository.findByStatusAndFundingStatusAndPaymentDeadlineBefore(
+                eq(OrderStatus.pending),
+                eq(OrderFundingStatus.awaiting_payment),
+                any(LocalDateTime.class)
+        )).thenReturn(java.util.List.of(order));
+        when(paymentRepository.findByOrderIdInAndPhaseAndStatusIn(any(), eq(PaymentPhase.upfront), any()))
+                .thenReturn(java.util.List.of(openPayment));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        int expiredCount = paymentService.expireOverdueUpfrontPayments();
+
+        assertThat(expiredCount).isEqualTo(1);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.cancelled);
+        assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.unpaid);
+        assertThat(order.getCancelReason()).isEqualTo(OrderCancelReason.payment_expired);
+        assertThat(openPayment.getStatus()).isEqualTo(PaymentStatus.expired);
+        verify(eventPublisher, times(2)).publishEvent(any());
+    }
+
+    @Test
+    void handleSepayWebhookCreatesRefundFlowWhenPaymentArrivesAfterCancellation() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        order.setStatus(OrderStatus.cancelled);
+        order.setCancelReason(OrderCancelReason.payment_expired);
+        order.setCancelledAt(LocalDateTime.now().minusMinutes(1));
+        Payment payment = processingPayment(order, "OB-ORDER-LATE-01");
+        properties.setMockMode(false);
+        properties.setWebhookApiKey("secret-key");
+
+        when(paymentRepository.findByGatewayOrderCode("OB-ORDER-LATE-01")).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(refundRequestRepository.findFirstByOrderIdOrderByCreatedAtDesc(order.getId())).thenReturn(Optional.empty());
+        when(refundRequestRepository.save(any(RefundRequest.class))).thenAnswer(invocation -> {
+            RefundRequest refundRequest = invocation.getArgument(0);
+            if (refundRequest.getId() == null) {
+                refundRequest.setId(UUID.randomUUID());
+            }
+            return refundRequest;
+        });
+        when(payoutService.ensureRefundPayout(any(RefundRequest.class))).thenReturn(Payout.builder()
+                .id(UUID.randomUUID())
+                .type(PayoutType.refund)
+                .status(PayoutStatus.pending_transfer)
+                .build());
+
+        paymentService.handleSepayWebhook("""
+                {
+                  "code": "OB-ORDER-LATE-01",
+                  "transferType": "in",
+                  "transferAmount": 2000000,
+                  "referenceCode": "TX-LATE-001"
+                }
+                """, "Apikey secret-key");
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.success);
+        assertThat(payment.getTransactionReference()).isEqualTo("TX-LATE-001");
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.cancelled);
+        assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.refund_pending_transfer);
+        assertThat(order.getPaidAmount()).isEqualByComparingTo("2000000");
+        assertThat(order.getRemainingAmount()).isEqualByComparingTo("8000000");
+        verify(refundRequestRepository).save(any(RefundRequest.class));
+        verify(payoutService).ensureRefundPayout(any(RefundRequest.class));
+        verify(eventPublisher, times(2)).publishEvent(any());
     }
 
     @Test

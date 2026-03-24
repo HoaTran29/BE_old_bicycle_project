@@ -8,6 +8,7 @@ import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
+import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
 import com.backend.old_bicycle_project.entity.enums.OrderEvidenceType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
@@ -17,6 +18,7 @@ import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.ReviewRepository;
@@ -253,6 +255,78 @@ class OrderServiceImplTest {
 
         assertThatThrownBy(() -> orderService.confirmReceived(order.getId(), seller, null, List.of()))
                 .isInstanceOf(AppException.class);
+    }
+
+    @Test
+    void confirmDepositRejectsExpiredCashOrder() {
+        User seller = user(AppRole.seller, "seller@test.dev");
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Expired cash order")
+                .status(ProductStatus.active)
+                .build();
+        Order order = Order.builder()
+                .id(UUID.randomUUID())
+                .buyer(buyer)
+                .seller(seller)
+                .product(product)
+                .totalAmount(new BigDecimal("15000000"))
+                .requiredUpfrontAmount(new BigDecimal("3000000"))
+                .depositAmount(new BigDecimal("3000000"))
+                .paidAmount(BigDecimal.ZERO)
+                .remainingAmount(new BigDecimal("15000000"))
+                .status(OrderStatus.pending)
+                .fundingStatus(OrderFundingStatus.awaiting_payment)
+                .paymentMethod(PaymentMethod.cash)
+                .paymentDeadline(java.time.LocalDateTime.now().minusMinutes(1))
+                .build();
+
+        when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> orderService.confirmDeposit(order.getId(), seller))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYMENT_EXPIRED));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.cancelled);
+        assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.unpaid);
+        assertThat(order.getCancelReason()).isEqualTo(OrderCancelReason.payment_expired);
+        assertThat(order.getCancelledAt()).isNotNull();
+    }
+
+    @Test
+    void cancelOrderSetsSellerCancelReason() {
+        User seller = user(AppRole.seller, "seller@test.dev");
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Cancelable order")
+                .status(ProductStatus.active)
+                .build();
+        Order order = Order.builder()
+                .id(UUID.randomUUID())
+                .buyer(buyer)
+                .seller(seller)
+                .product(product)
+                .status(OrderStatus.pending)
+                .fundingStatus(OrderFundingStatus.awaiting_payment)
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+
+        when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
+        when(reviewRepository.existsByOrderId(order.getId())).thenReturn(false);
+        when(orderEvidenceService.getEvidenceByOrderId(order.getId())).thenReturn(java.util.Collections.emptyMap());
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponseDTO response = orderService.cancelOrder(order.getId(), seller);
+
+        assertThat(response.getStatus()).isEqualTo(OrderStatus.cancelled);
+        assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.unpaid);
+        assertThat(response.getCancelReason()).isEqualTo(OrderCancelReason.seller_cancelled);
+        assertThat(response.getCancelledAt()).isNotNull();
     }
 
     private User user(AppRole role, String email) {

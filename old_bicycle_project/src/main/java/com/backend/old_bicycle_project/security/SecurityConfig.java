@@ -91,6 +91,8 @@ public class SecurityConfig {
                                                                 "/api/categories/*",
                                                                 "/api/brake-types",
                                                                 "/api/frame-materials",
+                                                                "/api/groupsets",
+                                                                "/api/size-charts/category/*",
                                                                 "/api/users/*/reviews")
                                                 .permitAll()
 
@@ -102,7 +104,7 @@ public class SecurityConfig {
 
                                                 // ===== Inspector =====
                                                 .requestMatchers(HttpMethod.POST, "/api/inspections/request/*")
-                                                .hasAnyRole("SELLER", "ADMIN")
+                                                .hasRole("ADMIN")
                                                 .requestMatchers(HttpMethod.POST, "/api/inspections/evaluate/*")
                                                 .hasAnyRole("INSPECTOR", "ADMIN")
                                                 .requestMatchers(HttpMethod.POST, "/api/inspections/report/*")

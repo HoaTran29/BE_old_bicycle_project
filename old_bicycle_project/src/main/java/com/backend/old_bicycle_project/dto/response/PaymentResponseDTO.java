@@ -30,5 +30,6 @@ public class PaymentResponseDTO {
     private String checkoutUrl;
     private String qrCodeUrl;
     private LocalDateTime paymentDate;
+    private LocalDateTime expiresAt;
     private LocalDateTime createdAt;
 }
