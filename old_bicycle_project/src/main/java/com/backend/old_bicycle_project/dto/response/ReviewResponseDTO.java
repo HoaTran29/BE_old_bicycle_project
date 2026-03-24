@@ -21,5 +21,7 @@ public class ReviewResponseDTO {
     private String revieweeName;
     private Integer rating;
     private String comment;
+    private String sellerReply;
+    private LocalDateTime sellerRepliedAt;
     private LocalDateTime createdAt;
 }

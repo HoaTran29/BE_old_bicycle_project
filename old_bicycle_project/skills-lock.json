@@ -19,17 +19,17 @@
     "spring-boot-rest-api-standards": {
       "source": "giuseppe-trisciuoglio/developer-kit",
       "sourceType": "github",
-      "computedHash": "579dd418485b6cf647b858b850427fc556db10840966a4327438d8286e46f3ad"
+      "computedHash": "546e14dd0dfde8d164b209bf8e151eb1439f675ace0db929fd0dfad4a167a838"
     },
     "spring-boot-security-jwt": {
       "source": "giuseppe-trisciuoglio/developer-kit",
       "sourceType": "github",
-      "computedHash": "f3af9317267383ebddeede046215d60b234d3a4d7c0746189b801a5d43614bbd"
+      "computedHash": "f649c3d2a3e1415dd06cf14ef453af75ca9c4316562f295ed7f9e2e181f2a9dd"
     },
     "spring-boot-test-patterns": {
       "source": "giuseppe-trisciuoglio/developer-kit",
       "sourceType": "github",
-      "computedHash": "14bc8e272947168d4d62ba5cfab0ecac18220e1b3a1630c83e8a558bf44c203e"
+      "computedHash": "4b133518f7bbf09d7739977d971a8901e73fac7285753493db25721eefa64614"
     }
   }
 }

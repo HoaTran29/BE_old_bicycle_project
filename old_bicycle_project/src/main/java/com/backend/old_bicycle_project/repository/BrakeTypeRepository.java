@@ -8,4 +8,6 @@ import java.util.UUID;
 
 @Repository
 public interface BrakeTypeRepository extends JpaRepository<BrakeType, UUID> {
+    boolean existsByNameIgnoreCase(String name);
+    boolean existsByNameIgnoreCaseAndIdNot(String name, UUID id);
 }

@@ -80,3 +80,6 @@ jspm_packages/
 .yarn/install-state.gz
 
 # IDE
+
+
+smoke*

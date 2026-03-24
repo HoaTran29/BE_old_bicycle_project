@@ -8,8 +8,11 @@ import com.backend.old_bicycle_project.dto.auth.ResetPasswordRequest;
 import com.backend.old_bicycle_project.entity.EmailVerification;
 import com.backend.old_bicycle_project.entity.PasswordResetToken;
 import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.entity.RefreshToken;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.UserStatus;
+import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.security.JwtTokenProvider;
 import org.junit.jupiter.api.Test;
@@ -17,17 +20,25 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,6 +61,9 @@ class AuthServiceTest {
 
     @Mock
     private EmailService emailService;
+
+    @Spy
+    private PasswordPolicyValidator passwordPolicyValidator;
 
     @InjectMocks
     private AuthService authService;
@@ -89,6 +103,45 @@ class AuthServiceTest {
     }
 
     @Test
+    void registerWithMissingRoleDefaultsToBuyer() {
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("newbuyer@test.dev");
+        request.setPassword("StrongPass1");
+        request.setFirstName("Minh");
+        request.setLastName("Le");
+        request.setRole(null);
+
+        when(userRepository.existsByEmail("newbuyer@test.dev")).thenReturn(false);
+        when(passwordEncoder.encode("StrongPass1")).thenReturn("encoded-password");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(emailService.createVerificationToken(any(User.class))).thenReturn(EmailVerification.builder()
+                .token("verify-token")
+                .build());
+
+        authService.register(request);
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getRole()).isEqualTo(AppRole.buyer);
+    }
+
+    @Test
+    void registerRejectsWeakPassword() {
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("weak@test.dev");
+        request.setPassword("weak");
+        request.setFirstName("Weak");
+        request.setLastName("User");
+        request.setRole(AppRole.buyer);
+
+        when(userRepository.existsByEmail("weak@test.dev")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.register(request))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_PASSWORD));
+    }
+
+    @Test
     void requestPasswordResetReturnsGenericMessageAndSendsEmailWhenUserExists() {
         User user = user("buyer@test.dev");
         PasswordResetToken resetToken = PasswordResetToken.builder()
@@ -104,6 +157,126 @@ class AuthServiceTest {
 
         verify(emailService).sendPasswordResetEmail(user, "reset-token");
         assertThat(message).contains("Neu email ton tai");
+    }
+
+    @Test
+    void refreshTokenReturnsNewAccessTokenWhenTokenIsValid() {
+        ReflectionTestUtils.setField(authService, "accessTokenExpiration", 900000L);
+        User user = user("buyer@test.dev");
+        RefreshToken refreshToken = RefreshToken.builder()
+                .user(user)
+                .token("refresh-token")
+                .expiresAt(LocalDateTime.now().plusDays(1))
+                .build();
+
+        when(refreshTokenService.findByToken("refresh-token")).thenReturn(Optional.of(refreshToken));
+        when(jwtTokenProvider.generateAccessToken(user)).thenReturn("new-access-token");
+
+        var response = authService.refreshToken(new com.backend.old_bicycle_project.dto.auth.RefreshTokenRequest() {{
+            setRefreshToken("refresh-token");
+        }});
+
+        assertThat(response.getAccessToken()).isEqualTo("new-access-token");
+        assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
+    }
+
+    @Test
+    void refreshTokenRejectsExpiredTokenAndRevokesUserSessions() {
+        User user = user("buyer@test.dev");
+        RefreshToken refreshToken = RefreshToken.builder()
+                .user(user)
+                .token("refresh-token")
+                .expiresAt(LocalDateTime.now().minusMinutes(1))
+                .build();
+
+        when(refreshTokenService.findByToken("refresh-token")).thenReturn(Optional.of(refreshToken));
+
+        assertThatThrownBy(() -> authService.refreshToken(new com.backend.old_bicycle_project.dto.auth.RefreshTokenRequest() {{
+                    setRefreshToken("refresh-token");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED));
+
+        verify(refreshTokenService).deleteAllByUser(user);
+    }
+
+    @Test
+    void loginRejectsUnverifiedUserAndRevokesExistingSessions() {
+        User user = user("buyer@test.dev");
+        user.setVerified(false);
+
+        Authentication authentication = mock(Authentication.class);
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(authentication.getPrincipal()).thenReturn(user);
+
+        assertThatThrownBy(() -> authService.login(new com.backend.old_bicycle_project.dto.auth.LoginRequest() {{
+                    setEmail("buyer@test.dev");
+                    setPassword("Password1");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.EMAIL_NOT_VERIFIED));
+
+        verify(refreshTokenService).deleteAllByUser(user);
+    }
+
+    @Test
+    void loginRejectsInvalidCredentialsWithClearError() {
+        when(authenticationManager.authenticate(any()))
+                .thenThrow(new BadCredentialsException("Bad credentials"));
+
+        assertThatThrownBy(() -> authService.login(new com.backend.old_bicycle_project.dto.auth.LoginRequest() {{
+                    setEmail("buyer@test.dev");
+                    setPassword("WrongPassword1");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_CREDENTIALS));
+    }
+
+    @Test
+    void loginRejectsInactiveUserWithClearError() {
+        when(authenticationManager.authenticate(any()))
+                .thenThrow(new DisabledException("Account disabled"));
+
+        assertThatThrownBy(() -> authService.login(new com.backend.old_bicycle_project.dto.auth.LoginRequest() {{
+                    setEmail("seller.city@oldbicycle.dev");
+                    setPassword("Password1");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.ACCOUNT_INACTIVE));
+    }
+
+    @Test
+    void loginRejectsBannedUserWithClearError() {
+        when(authenticationManager.authenticate(any()))
+                .thenThrow(new LockedException("Account banned"));
+
+        assertThatThrownBy(() -> authService.login(new com.backend.old_bicycle_project.dto.auth.LoginRequest() {{
+                    setEmail("buyer.banned@oldbicycle.dev");
+                    setPassword("Password1");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.ACCOUNT_BANNED));
+    }
+
+    @Test
+    void refreshTokenRejectsUnverifiedUserAndRevokesSessions() {
+        User user = user("buyer@test.dev");
+        user.setVerified(false);
+        RefreshToken refreshToken = RefreshToken.builder()
+                .user(user)
+                .token("refresh-token")
+                .expiresAt(LocalDateTime.now().plusDays(1))
+                .build();
+
+        when(refreshTokenService.findByToken("refresh-token")).thenReturn(Optional.of(refreshToken));
+
+        assertThatThrownBy(() -> authService.refreshToken(new com.backend.old_bicycle_project.dto.auth.RefreshTokenRequest() {{
+                    setRefreshToken("refresh-token");
+                }}))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.EMAIL_NOT_VERIFIED));
+
+        verify(refreshTokenService).deleteAllByUser(user);
     }
 
     @Test

@@ -14,5 +14,7 @@ public interface WishlistRepository extends JpaRepository<Wishlist, Wishlist.Wis
 
     List<Wishlist> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
+    long countByUserId(UUID userId);
+
     void deleteByUserIdAndProductId(UUID userId, UUID productId);
 }

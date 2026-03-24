@@ -21,20 +21,22 @@ import com.backend.old_bicycle_project.security.JwtTokenProvider;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
-
-    private static final Pattern PASSWORD_POLICY = Pattern.compile("^(?=.*[A-Z])(?=.*\\d).{8,}$");
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -42,6 +44,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final RefreshTokenService refreshTokenService;
     private final EmailService emailService;
+    private final PasswordPolicyValidator passwordPolicyValidator;
 
     @Value("${jwt.access-token-expiration}")
     private long accessTokenExpiration;
@@ -52,7 +55,7 @@ public class AuthService {
             throw new AppException(ErrorCode.USER_EXISTED);
         }
 
-        validatePasswordPolicy(request.getPassword());
+        passwordPolicyValidator.validate(request.getPassword());
 
         AppRole role = request.getRole();
         if (role == null || (role != AppRole.buyer && role != AppRole.seller)) {
@@ -79,11 +82,25 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+        String normalizedEmail = request.getEmail() == null ? null : request.getEmail().trim();
+        Authentication authentication;
+
+        try {
+            authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword())
+            );
+        } catch (DisabledException exception) {
+            throw new AppException(ErrorCode.ACCOUNT_INACTIVE);
+        } catch (LockedException exception) {
+            throw new AppException(ErrorCode.ACCOUNT_BANNED);
+        } catch (BadCredentialsException | InternalAuthenticationServiceException exception) {
+            throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+        } catch (AuthenticationException exception) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
 
         User user = (User) authentication.getPrincipal();
+        ensureUserVerified(user);
         String accessToken = jwtTokenProvider.generateAccessToken(user);
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
 
@@ -100,6 +117,7 @@ public class AuthService {
         }
 
         User user = refreshToken.getUser();
+        ensureUserVerified(user);
         String newAccessToken = jwtTokenProvider.generateAccessToken(user);
 
         return buildAuthResponse(user, newAccessToken, refreshToken.getToken());
@@ -117,7 +135,7 @@ public class AuthService {
 
     @Transactional
     public String resetPassword(ResetPasswordRequest request) {
-        validatePasswordPolicy(request.getNewPassword());
+        passwordPolicyValidator.validate(request.getNewPassword());
 
         PasswordResetToken passwordResetToken = emailService.findPasswordResetToken(request.getToken())
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_RESET_TOKEN));
@@ -199,7 +217,7 @@ public class AuthService {
             throw new AppException(ErrorCode.CURRENT_PASSWORD_INVALID);
         }
 
-        validatePasswordPolicy(request.getNewPassword());
+        passwordPolicyValidator.validate(request.getNewPassword());
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
         refreshTokenService.deleteAllByUser(user);
@@ -237,9 +255,10 @@ public class AuthService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
     }
 
-    private void validatePasswordPolicy(String password) {
-        if (password == null || !PASSWORD_POLICY.matcher(password).matches()) {
-            throw new AppException(ErrorCode.INVALID_PASSWORD);
+    private void ensureUserVerified(User user) {
+        if (!user.isVerified()) {
+            refreshTokenService.deleteAllByUser(user);
+            throw new AppException(ErrorCode.EMAIL_NOT_VERIFIED);
         }
     }
 

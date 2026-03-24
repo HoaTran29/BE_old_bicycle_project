@@ -2,7 +2,9 @@ package com.backend.old_bicycle_project.specification;
 
 import com.backend.old_bicycle_project.dto.product.ProductFilterRequest;
 import com.backend.old_bicycle_project.entity.Inspection;
+import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Product;
+import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -12,14 +14,18 @@ import org.springframework.data.jpa.domain.Specification;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class ProductSpecification {
 
     private static final List<ProductStatus> PUBLIC_VISIBLE_STATUSES = List.of(
             ProductStatus.active,
-            ProductStatus.pending_inspection,
-            ProductStatus.inspected_passed,
-            ProductStatus.inspected_failed
+            ProductStatus.inspected_passed
+    );
+    private static final List<OrderStatus> ACTIVE_TRANSACTION_STATUSES = List.of(
+            OrderStatus.pending,
+            OrderStatus.deposited,
+            OrderStatus.awaiting_buyer_confirmation
     );
 
     public static Specification<Product> fromFilter(ProductFilterRequest filter) {
@@ -28,6 +34,8 @@ public class ProductSpecification {
 
             predicates.add(root.get("status").in(PUBLIC_VISIBLE_STATUSES));
             predicates.add(cb.isNull(root.get("deletedAt")));
+            predicates.add(cb.not(hasActiveTransaction(root, query, cb)));
+            predicates.add(hasValidPassedInspection(root, query, cb));
 
             if (filter == null) {
                 return cb.and(predicates.toArray(new Predicate[0]));
@@ -68,7 +76,9 @@ public class ProductSpecification {
                 predicates.add(cb.equal(cb.lower(root.get("wheelSize")), filter.getWheelSize().toLowerCase()));
             }
 
-            if (filter.getGroupset() != null && !filter.getGroupset().isBlank()) {
+            if (filter.getGroupsetId() != null) {
+                predicates.add(cb.equal(root.get("groupsetReference").get("id"), filter.getGroupsetId()));
+            } else if (filter.getGroupset() != null && !filter.getGroupset().isBlank()) {
                 predicates.add(cb.like(
                         cb.lower(root.get("groupset")),
                         "%" + filter.getGroupset().toLowerCase() + "%"
@@ -88,15 +98,7 @@ public class ProductSpecification {
             }
 
             if (Boolean.TRUE.equals(filter.getHasInspection())) {
-                Subquery<Long> inspectionSubquery = query.subquery(Long.class);
-                Root<Inspection> inspectionRoot = inspectionSubquery.from(Inspection.class);
-                inspectionSubquery.select(cb.literal(1L))
-                        .where(
-                                cb.equal(inspectionRoot.get("product"), root),
-                                cb.isTrue(inspectionRoot.get("passed")),
-                                cb.greaterThan(inspectionRoot.get("validUntil"), LocalDateTime.now())
-                        );
-                predicates.add(cb.exists(inspectionSubquery));
+                predicates.add(hasValidPassedInspection(root, query, cb));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -105,5 +107,83 @@ public class ProductSpecification {
 
     public static Specification<Product> withStatus(ProductStatus status) {
         return (root, query, cb) -> cb.equal(root.get("status"), status);
+    }
+
+    public static Specification<Product> fromAdminFilter(ProductStatus status, UUID sellerId, String keyword) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isNull(root.get("deletedAt")));
+
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (sellerId != null) {
+                predicates.add(cb.equal(root.get("seller").get("id"), sellerId));
+            }
+            if (keyword != null && !keyword.isBlank()) {
+                String normalizedKeyword = "%" + keyword.toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("description")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("email")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("firstName")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("lastName")), normalizedKeyword)
+                ));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    public static Specification<Product> fromInspectionRequestFilter(String keyword) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isNull(root.get("deletedAt")));
+            predicates.add(cb.equal(root.get("status"), ProductStatus.pending_inspection));
+
+            if (keyword != null && !keyword.isBlank()) {
+                String normalizedKeyword = "%" + keyword.toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("description")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("firstName")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("lastName")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("seller").get("email")), normalizedKeyword)
+                ));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    private static Predicate hasActiveTransaction(
+            Root<Product> root,
+            jakarta.persistence.criteria.CriteriaQuery<?> query,
+            jakarta.persistence.criteria.CriteriaBuilder cb
+    ) {
+        Subquery<Long> orderSubquery = query.subquery(Long.class);
+        Root<Order> orderRoot = orderSubquery.from(Order.class);
+        orderSubquery.select(cb.literal(1L))
+                .where(
+                        cb.equal(orderRoot.get("product").get("id"), root.get("id")),
+                        orderRoot.get("status").in(ACTIVE_TRANSACTION_STATUSES)
+                );
+        return cb.exists(orderSubquery);
+    }
+
+    private static Predicate hasValidPassedInspection(
+            Root<Product> root,
+            jakarta.persistence.criteria.CriteriaQuery<?> query,
+            jakarta.persistence.criteria.CriteriaBuilder cb
+    ) {
+        Subquery<Long> inspectionSubquery = query.subquery(Long.class);
+        Root<Inspection> inspectionRoot = inspectionSubquery.from(Inspection.class);
+        inspectionSubquery.select(cb.literal(1L))
+                .where(
+                        cb.equal(inspectionRoot.get("product"), root),
+                        cb.isTrue(inspectionRoot.get("passed")),
+                        cb.greaterThan(inspectionRoot.get("validUntil"), LocalDateTime.now())
+                );
+        return cb.exists(inspectionSubquery);
     }
 }

@@ -1,0 +1,69 @@
+services:
+  - type: web
+    name: old-bicycle-backend
+    runtime: docker
+    plan: free
+    region: singapore
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/groupsets
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: APP_FRONTEND_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: SEPAY_MOCK_MODE
+        sync: false
+      - key: SEPAY_API_BASE_URL
+        value: https://my.sepay.vn/userapi
+      - key: SEPAY_API_TOKEN
+        sync: false
+      - key: SEPAY_WEBHOOK_API_KEY
+        sync: false
+      - key: SEPAY_BANK_ACCOUNT_ID
+        sync: false
+      - key: SEPAY_BANK_BIN
+        sync: false
+      - key: SEPAY_ACCOUNT_NUMBER
+        sync: false
+      - key: SEPAY_ACCOUNT_NAME
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: AI_GATEWAY_ENABLED
+        sync: false
+      - key: AI_GATEWAY_API_BASE_URL
+        value: https://ai-gateway.vercel.sh/v1/chat/completions
+      - key: AI_GATEWAY_API_KEY
+        sync: false
+      - key: AI_GATEWAY_MODEL
+        value: google/gemini-2.5-flash-lite
+      - key: AI_GATEWAY_TEMPERATURE
+        value: 0.2
+      - key: AI_GATEWAY_MAX_TOKENS
+        value: 600
+      - key: PAYMENT_EXPIRY_SCAN_INTERVAL_MS
+        value: 60000
+      - key: PAYMENT_EXPIRY_INITIAL_DELAY_MS
+        value: 15000

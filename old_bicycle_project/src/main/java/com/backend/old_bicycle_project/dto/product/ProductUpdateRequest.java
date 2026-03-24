@@ -18,6 +18,7 @@ public class ProductUpdateRequest {
     private UUID categoryId;
     private String frameSize;
     private String wheelSize;
+    private UUID groupsetId;
     private String groupset;
     private ConditionType condition;
     private String province;

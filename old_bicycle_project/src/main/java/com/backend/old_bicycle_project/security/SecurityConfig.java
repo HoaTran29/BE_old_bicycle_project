@@ -52,8 +52,6 @@ public class SecurityConfig {
                                                 "/api/auth/reset-password",
                                                 "/api/auth/verify-email",
                                                 "/api/payments/sepay/webhook",
-                                                "/api/auth/profile",
-                                                "/api/auth/change-password",
                                                 // Swagger UI
                                                 "/swagger-ui/**",
                                                 "/swagger-ui.html",
@@ -92,7 +90,10 @@ public class SecurityConfig {
                                                                 "/api/categories",
                                                                 "/api/categories/*",
                                                                 "/api/brake-types",
-                                                                "/api/frame-materials")
+                                                                "/api/frame-materials",
+                                                                "/api/groupsets",
+                                                                "/api/size-charts/category/*",
+                                                                "/api/users/*/reviews")
                                                 .permitAll()
 
                                                 // ===== WebSocket =====
@@ -103,8 +104,15 @@ public class SecurityConfig {
 
                                                 // ===== Inspector =====
                                                 .requestMatchers(HttpMethod.POST, "/api/inspections/request/*")
-                                                .hasAnyRole("SELLER", "ADMIN")
+                                                .hasRole("ADMIN")
                                                 .requestMatchers(HttpMethod.POST, "/api/inspections/evaluate/*")
+                                                .hasAnyRole("INSPECTOR", "ADMIN")
+                                                .requestMatchers(HttpMethod.POST, "/api/inspections/report/*")
+                                                .hasAnyRole("INSPECTOR", "ADMIN")
+                                                .requestMatchers(HttpMethod.GET,
+                                                                "/api/inspections/dashboard",
+                                                                "/api/inspections/requests",
+                                                                "/api/inspections/history")
                                                 .hasAnyRole("INSPECTOR", "ADMIN")
                                                 .requestMatchers(HttpMethod.GET, "/api/inspections/**").permitAll()
 
@@ -113,12 +121,19 @@ public class SecurityConfig {
                                                 .hasAnyRole("SELLER", "ADMIN")
                                                 .requestMatchers(HttpMethod.PUT, "/api/products/*")
                                                 .hasAnyRole("SELLER", "ADMIN")
+                                                .requestMatchers(HttpMethod.PATCH,
+                                                                "/api/products/*/hide",
+                                                                "/api/products/*/show")
+                                                .hasAnyRole("SELLER", "ADMIN")
                                                 .requestMatchers(HttpMethod.DELETE, "/api/products/*")
                                                 .hasAnyRole("SELLER", "ADMIN")
 
                                                 // ===== Buyer & Seller =====
                                                 .requestMatchers("/api/orders/**")
                                                 .hasAnyRole("BUYER", "SELLER", "ADMIN")
+
+                                                .requestMatchers("/api/payout-profiles/**")
+                                                .authenticated()
 
                                                 // ===== Authenticated (any role) =====
                                                 .anyRequest().authenticated())

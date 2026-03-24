@@ -1,5 +1,6 @@
 package com.backend.old_bicycle_project.service;
 
+import com.backend.old_bicycle_project.dto.request.ReviewReplyRequestDTO;
 import com.backend.old_bicycle_project.dto.request.ReviewRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ReviewResponseDTO;
 import org.springframework.data.domain.Page;
@@ -18,4 +19,9 @@ public interface ReviewService {
      * Get paginated reviews for a specific seller
      */
     Page<ReviewResponseDTO> getSellerReviews(UUID sellerId, Pageable pageable);
+
+    /**
+     * Seller creates or updates a reply to a buyer review.
+     */
+    ReviewResponseDTO replyToReview(UUID reviewId, UUID currentUserId, ReviewReplyRequestDTO requestDTO);
 }

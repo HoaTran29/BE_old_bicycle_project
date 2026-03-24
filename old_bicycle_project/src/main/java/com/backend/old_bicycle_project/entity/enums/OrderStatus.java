@@ -3,6 +3,7 @@ package com.backend.old_bicycle_project.entity.enums;
 public enum OrderStatus {
     pending("pending"),
     deposited("deposited"),
+    awaiting_buyer_confirmation("awaiting_buyer_confirmation"),
     completed("completed"),
     cancelled("cancelled");
 

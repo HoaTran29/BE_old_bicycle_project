@@ -54,6 +54,9 @@ This repository is a **Java 21 / Spring Boot / PostgreSQL backend** for the Old 
 - Keep recommendations anchored to the actual stack. Do not default to Node.js, React, mobile, game, or SEO workflows unless the user explicitly changes scope.
 - Treat a backend feature as `Done` only when API flow, service logic, security, migrations, major SRS rules, and basic verification are aligned.
 - If code and SRS disagree, state the mismatch explicitly instead of smoothing it over.
+- Whenever an accepted backend or cross-domain change modifies features, business rules, API behavior, role permissions, status semantics, workflows, or database design, update the repository SRS reference `../SRS-Old-Bicycles-Marketplace (1).md` in the same slice of work.
+- If a migration introduces, removes, or materially changes tables, columns, relationships, or persisted status fields, reflect that change explicitly in the SRS database section and table listings.
+- Do not mark a backend slice as fully done if Flyway/entity/service code changed but the relevant SRS Markdown stayed outdated.
 - Do not infer completion from entities or repositories alone.
 - All Vietnamese prose written from this point onward must use proper Vietnamese diacritics by default.
 - This diacritic rule applies to code comments, JavaDoc, user-facing strings, documentation, planning notes, knowledge notes, and any other Vietnamese explanatory text.

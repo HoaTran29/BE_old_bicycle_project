@@ -7,8 +7,8 @@
 |**Field**|**Value**|
 | :- | :- |
 |**Project Name**|Old Bicycles Marketplace|
-|**Document Version**|2\.0|
-|**Date**|2026-01-21|
+|**Document Version**|4\.1|
+|**Date**|2026-03-24|
 |**Author**|Development Team|
 |**Status**|Draft|
 ## **Revision History**
@@ -18,6 +18,8 @@
 |1\.0|2026-01-21|Dev Team|Initial draft|
 |2\.0|2026-01-21|Dev Team|Added Business Rules, Guest actor, detailed Use Cases, updated DB schema|
 |3\.0|2026-01-28|Dev Team|Added Business Rules, updated DB schema|
+|4\.0|2026-03-20|Dev Team|Synced mandatory inspection before public, manual payout/refund flow, seller reply review, and order evidence uploads|
+|4\.1|2026-03-24|Dev Team|Synced groupset, size chart, payment timeout/expiry, and AI assistant mức 2 qua Spring Boot + Vercel AI Gateway|
 
 
 # **1. Introduction**
@@ -105,7 +107,7 @@ Tài liệu được tổ chức như sau:
 |INT-001|Payment Gateway|Xử lý thanh toán online đặt cọc/mua xe|REST API / HTTPS|
 |INT-002|Logistics API|Kết nối đơn vị vận chuyển|REST API|
 |INT-003|Notification Service|Gửi email, SMS, push notification|WebSocket / REST|
-|INT-004|Chatbot AI|Hỗ trợ chăm sóc khách hàng tự động|REST API|
+|INT-004|Chatbot AI|Hỗ trợ chăm sóc khách hàng tự động theo context user qua Spring Boot backend và Vercel AI Gateway|REST API|
 |INT-005|Image Storage|Lưu trữ ảnh, video xe|Cloud Storage API|
 ### **2.1.3 User Interfaces**
 - **Responsive Web Application**: Hỗ trợ Desktop, Tablet, Mobile
@@ -139,19 +141,19 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Feature ID**|**Feature Name**|**Description**|**Priority**|
 | :- | :- | :- | :- |
 |F-001|User Authentication|Đăng ký, đăng nhập, quản lý tài khoản|Must|
-|F-002|Bike Listing|Đăng tin bán xe với ảnh, video, mô tả|Must|
+|F-002|Bike Listing|Đăng tin bán xe với ảnh, video, mô tả; bắt buộc qua admin moderation và inspection trước khi public|Must|
 |F-003|Search & Filter|Tìm kiếm và lọc xe theo nhiều tiêu chí|Must|
 |F-004|Advanced Filter|Lọc theo thông số kỹ thuật (size, groupset, phanh)|Must|
-|F-005|Bike Detail View|Xem chi tiết xe, ảnh, lịch sử|Must|
+|F-005|Bike Detail View|Xem chi tiết xe, ảnh, lịch sử, báo cáo kiểm định và gợi ý size theo danh mục|Must|
 |F-006|Messaging System|Chat real-time giữa buyer và seller|Must|
 |F-007|Wishlist|Lưu xe yêu thích|Should|
-|F-008|Deposit & Order|Đặt cọc và quản lý đơn hàng|Must|
+|F-008|Deposit & Order|Đặt cọc, quản lý đơn hàng, refund và payout thủ công có đối soát|Must|
 |F-009|Seller Rating|Đánh giá uy tín người bán|Must|
-|F-010|Inspection System|Kiểm định và gắn nhãn xe|Should|
+|F-010|Inspection System|Kiểm định bắt buộc trước khi public và gắn nhãn xe|Must|
 |F-011|Admin Dashboard|Quản lý toàn bộ hệ thống|Must|
 |F-012|Report System|Báo cáo tin đăng/user vi phạm|Must|
 |F-013|Notification System|Thông báo real-time|Must|
-|F-014|Chatbot Support|Hỗ trợ khách hàng tự động|Could|
+|F-014|Chatbot Support|Trợ lý AI mức 2 giải thích order, listing, inspection, refund và payout theo context thật của user đang đăng nhập|Could|
 |F-015|Logistics Integration|Kết nối vận chuyển|Could|
 |F-016|Online Payment|Thanh toán trực tuyến|Could|
 ## **2.3 User Characteristics**
@@ -264,14 +266,14 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 | :- | :- | :- |
 |UC13|Đăng tin bán xe|Post Ad với đầy đủ thông tin kỹ thuật|
 |UC14|Quản lý tin đăng|Sửa, Ẩn, Xóa, Đánh dấu đã bán|
-|UC15|Yêu cầu kiểm định xe|Gửi request tới Inspector|
+|UC15|Theo dõi trạng thái kiểm định|Nhận kết quả kiểm định, chỉnh sửa tin khi fail và chờ admin chuyển kiểm định lại|
 |UC16|Quản lý đơn hàng|Chấp nhận/Từ chối yêu cầu mua/cọc|
 |UC17|Phản hồi đánh giá|Reply Review từ buyer|
 ### **3.1.4 Inspector (Người kiểm định)**
 
 |**UC ID**|**Use Case**|**Description**|
 | :- | :- | :- |
-|UC18|Tiếp nhận yêu cầu kiểm định|Nhận và xác nhận request|
+|UC18|Tiếp nhận yêu cầu kiểm định|Nhận các tin do admin chuyển sang hàng chờ kiểm định|
 |UC19|Cập nhật Checklist kiểm tra|Khung, phuộc, truyền động, phanh, bánh|
 |UC20|Upload báo cáo kiểm định|Báo cáo + Hình ảnh thực tế|
 |UC21|Gắn nhãn "Verified"|Xác nhận xe đã kiểm định|
@@ -281,7 +283,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**UC ID**|**Use Case**|**Description**|
 | :- | :- | :- |
 |UC23|Quản lý người dùng|Khóa/Mở khóa tài khoản|
-|UC24|Duyệt tin đăng|Approve/Reject Ads|
+|UC24|Duyệt tin đăng|Reject hoặc chuyển tin sang inspection trước khi public|
 |UC25|Quản lý danh mục kỹ thuật|Hãng xe, loại groupset, size chart|
 |UC26|Giải quyết khiếu nại/Tranh chấp|Dựa trên báo cáo Inspector|
 |UC27|Xem báo cáo thống kê|Doanh thu, user, traffic|
@@ -294,7 +296,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 | :- | :- | :- |
 |UI-001|Homepage|Landing page với featured bikes, search|
 |UI-002|Bike Listing Page|Danh sách xe với filters, pagination|
-|UI-003|Bike Detail Page|Chi tiết xe, gallery, seller info, báo cáo kiểm định|
+|UI-003|Bike Detail Page|Chi tiết xe, gallery, seller info, báo cáo kiểm định, gợi ý size theo category|
 |UI-004|Login/Register|Authentication forms|
 |UI-005|Seller Dashboard|Quản lý tin đăng, đơn hàng, tin nhắn|
 |UI-006|Create Listing|Form đăng tin với upload media|
@@ -304,6 +306,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |UI-010|Admin Dashboard|Quản trị toàn hệ thống|
 |UI-011|Report Form|Form báo cáo vi phạm|
 |UI-012|Notification Center|Trung tâm thông báo|
+|UI-013|Assistant Page|Trang trò chuyện với trợ lý AI theo context tài khoản|
 ### **3.2.2 API Interfaces**
 
 |**API-ID**|**Endpoint Group**|**Description**|
@@ -322,6 +325,9 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |API-012|/notifications/\*|Notification system|
 |API-013|/brands/\*|Brand management|
 |API-014|/categories/\*|Category management|
+|API-015|/payout-profiles/\*|Buyer/Seller payout profile management|
+|API-016|/admin/payouts/\*|Admin manual payout completion|
+|API-017|/assistant/\*|AI assistant chat via backend proxy|
 
 
 ## **3.3 Functional Requirements**
@@ -397,7 +403,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-AUTH-005|
-|**Description**|User shall có thể cập nhật thông tin cá nhân: họ tên, avatar, địa chỉ mặc định, số điện thoại|
+|**Description**|User shall có thể cập nhật thông tin cá nhân: họ tên, avatar, địa chỉ mặc định, số điện thoại và tài khoản ngân hàng dùng cho refund/payout thủ công|
 |**Priority**|Must|
 
 
@@ -447,7 +453,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 
 4\. Tạo listing với status "Pending"
 
-5\. Notify admin để duyệt
+5\. Notify admin để duyệt nội dung và chuyển kiểm định
 
 6\. Set expires\_at = created\_at + 30 ngày
 
@@ -503,12 +509,12 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Priority**|Must|
 
 
-#### **FR-SELL-006: Request Inspection**
+#### **FR-SELL-006: Track Inspection Status**
 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-SELL-006|
-|**Description**|Seller shall có thể gửi yêu cầu kiểm định xe tới Inspector|
+|**Description**|Seller shall có thể theo dõi trạng thái kiểm định của tin đăng và chỉnh sửa/gửi lại tin khi inspection failed|
 |**Priority**|Should|
 
 
@@ -517,7 +523,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-SELL-007|
-|**Description**|Seller shall có thể phản hồi đánh giá từ Buyer|
+|**Description**|Seller shall có thể phản hồi một lần cho mỗi đánh giá từ Buyer|
 |**Priority**|Should|
 
 
@@ -612,8 +618,8 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 **Business Rules (BR08):**
 
 - Tiền cọc giữ trên hệ thống trung gian
-- Nếu Seller giao đúng: tiền chuyển cho Seller (trừ phí)
-- Nếu Seller hủy/xe sai mô tả: hoàn tiền Buyer
+- Nếu Seller giao đúng: hệ thống tạo seller payout pending, admin/kế toán hoàn tất chuyển tiền thủ công và lưu bankRef
+- Nếu Seller hủy/xe sai mô tả: admin duyệt refund và hoàn tiền Buyer theo luồng payout thủ công có đối soát
 
 
 
@@ -623,12 +629,13 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-BUY-007|
-|**Description**|Buyer shall có thể đánh giá seller CHỈ sau khi đơn hàng "Hoàn tất"|
+|**Description**|Buyer shall có thể đánh giá seller CHỈ sau khi đơn hàng "Hoàn tất" và mỗi đơn chỉ được gửi một review|
 |**Priority**|Must|
 
 **Constraint (BR10):**
 
 - Đánh giá chỉ được phép khi order.status = "Completed"
+- Seller có thể gửi đúng một phản hồi cho review đó
 
 
 
@@ -685,7 +692,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-INS-001|
-|**Description**|Inspector shall có thể tiếp nhận yêu cầu kiểm định|
+|**Description**|Inspector shall có thể tiếp nhận các tin đăng do admin chuyển sang hàng chờ kiểm định|
 |**Priority**|Should|
 
 
@@ -694,7 +701,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-INS-002|
-|**Description**|Inspector shall có thể điền checklist và upload báo cáo kiểm định|
+|**Description**|Inspector shall có thể điền checklist, upload ảnh thực tế và file báo cáo kiểm định PDF|
 |**Priority**|Should|
 
 **Checklist Items:**
@@ -719,7 +726,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-INS-003|
-|**Description**|Hệ thống shall tự động gắn nhãn "Verified" khi Inspector approve|
+|**Description**|Hệ thống shall chỉ public tin đăng khi Inspector pass; khi đó hệ thống tự động gắn nhãn "Verified" và chuyển tin sang active|
 |**Priority**|Should|
 
 **Constraint (BR05):**
@@ -757,10 +764,14 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 **Order Data:**
 
 - buyer\_id, product\_id
-- total\_amount, deposit\_amount
+- total\_amount, deposit\_amount, required\_upfront\_amount
 - service\_fee (theo BR09)
 - payment\_method
-- status: Pending → Deposited → Completed → Cancelled
+- status: Pending → Deposited → Awaiting Buyer Confirmation → Completed / Cancelled
+- funding\_status: Unpaid → Awaiting Payment → Held → Seller Payout Pending / Refund Pending Transfer → Released / Refunded
+- Khi seller chấp nhận đơn, hệ thống tạo `payment_deadline` cho khoản thanh toán ứng trước
+- Nếu buyer không thanh toán đúng hạn, scheduler backend tự đổi đơn sang `cancelled` với `cancel_reason = payment_expired`
+- Nếu webhook nhận tiền đến sau khi đơn đã hết hạn/hủy, hệ thống không khôi phục đơn; thay vào đó tự tạo nhánh `refund_pending_transfer` để hoàn tiền thủ công cho buyer
 
 
 
@@ -779,8 +790,15 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-ORD-003|
-|**Description**|Hệ thống shall ghi nhận giao dịch hoàn tất và xử lý tiền cọc. Hệ thống tự động chuyển trạ|
+|**Description**|Hệ thống shall ghi nhận seller bàn giao xe kèm ảnh chứng cứ, cho buyer xác nhận đã nhận xe, rồi tạo payout pending để admin/kế toán giải ngân tiền cọc thủ công cho seller|
 |**Priority**|Must|
+
+**Flow chính:**
+
+- Seller báo đã giao xe phải đính kèm ít nhất 1 ảnh bàn giao
+- Buyer có thể đính kèm ảnh đã nhận xe khi xác nhận
+- Sau khi buyer xác nhận, đơn hoàn tất nhưng tiền chỉ chuyển trạng thái sang `seller_payout_pending`
+- Chỉ khi admin hoàn tất chuyển tiền thật và nhập `bankRef`, payout mới được xem là released
 
 
 #### **FR-ORD-004: Transaction Logging**
@@ -788,7 +806,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-ORD-004|
-|**Description**|Hệ thống shall ghi log chi tiết từng lần tiền vào/ra|
+|**Description**|Hệ thống shall ghi log chi tiết cho payment vào, refund review, payout record, bankRef và evidence gắn với đơn hàng|
 |**Priority**|Must|
 
 
@@ -820,8 +838,25 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Description**|User shall có thể xem tất cả thông báo và đánh dấu đã đọc|
 |**Priority**|Must|
 
+### **3.3.8 Chatbot Support (NEW)**
+#### **FR-AI-001: Context-Aware Assistant**
 
-### **3.3.8 Admin Management**
+|**Attribute**|**Value**|
+| :- | :- |
+|**ID**|FR-AI-001|
+|**Description**|User đã đăng nhập shall có thể hỏi trợ lý AI về trạng thái đơn hàng, listing, inspection, refund hoặc payout dựa trên context thật của tài khoản hiện tại|
+|**Priority**|Could|
+
+**Behavior:**
+
+- FE gửi lịch sử hội thoại ngắn lên backend qua `/api/assistant/chat`
+- Backend lấy context thật của user hiện tại: role, order gần đây, listing gần đây, inspection summary, refund/payout summary và unread notifications
+- Backend gọi Vercel AI Gateway theo kiểu server-side; không lộ API key ở browser
+- Assistant chỉ giải thích và hướng dẫn theo dữ liệu hiện có, không tự thực hiện action thay user
+- Nếu context không đủ hoặc AI Gateway chưa cấu hình, hệ thống phải trả thông báo rõ ràng thay vì bịa dữ liệu
+
+
+### **3.3.9 Admin Management**
 #### **FR-ADM-001: User Management**
 
 |**Attribute**|**Value**|
@@ -845,7 +880,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-ADM-002|
-|**Description**|Admin shall có thể duyệt hoặc từ chối tin đăng (theo BR04)|
+|**Description**|Admin shall kiểm duyệt nội dung tin đăng, từ chối hoặc chuyển tin sang inspection; không đưa thẳng public khi chưa inspection pass|
 |**Priority**|Must|
 
 
@@ -872,7 +907,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Attribute**|**Value**|
 | :- | :- |
 |**ID**|FR-ADM-005|
-|**Description**|Admin shall có thể giải quyết tranh chấp dựa trên báo cáo Inspector (BR11)|
+|**Description**|Admin shall có thể giải quyết tranh chấp dựa trên báo cáo Inspector, ảnh seller bàn giao, ảnh buyer đã nhận và hoàn tất refund/payout thủ công bằng bankRef|
 |**Priority**|Must|
 
 
@@ -936,27 +971,27 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**BR01**|Tiêu chuẩn thông tin kỹ thuật|Khi đăng tin, Seller PHẢI nhập: Size khung, Kích thước bánh, Loại phanh, Chất liệu khung|
 |**BR02**|Hình ảnh thực tế|Tối thiểu 3 ảnh: Ảnh toàn thân, ảnh groupset, ảnh số khung (serial)|
 |**BR03**|Thời hạn tin đăng|Tin có hiệu lực 30 ngày, sau đó phải gia hạn|
-|**BR04**|Trạng thái tin mới|Tin mới = "Pending", cần Admin duyệt trước khi hiển thị|
+|**BR04**|Trạng thái tin mới|Tin mới = "Pending". Admin phải duyệt nội dung trước, sau đó chuyển sang inspection. Chỉ tin inspection pass mới được public|
 ## **4.2 Inspection Rules (Quy tắc Kiểm định)**
 
 |**BR ID**|**Rule**|**Description**|
 | :- | :- | :- |
-|**BR05**|Quy trình gắn nhãn|Nhãn "Verified" CHỈ được cấp bởi Inspector, Seller không thể tự gắn|
-|**BR06**|Hiệu lực kiểm định|Báo cáo có giá trị 7 ngày hoặc đến khi bán. Thay đổi linh kiện = hủy nhãn|
-|**BR07**|Minh bạch báo cáo|Báo cáo kiểm định PHẢI công khai trên trang chi tiết sản phẩm|
+|**BR05**|Inspection bắt buộc trước public|Mọi tin đăng muốn public đều phải được admin chuyển sang inspection và được inspector pass|
+|**BR06**|Quy trình gắn nhãn|Nhãn "Verified" CHỈ được cấp bởi Inspector, Seller không thể tự gắn|
+|**BR07**|Hiệu lực và minh bạch kiểm định|Báo cáo có giá trị 7 ngày hoặc đến khi bán. Thay đổi linh kiện hoặc relist sau khi ẩn = phải kiểm định lại. Báo cáo hợp lệ phải công khai trên trang chi tiết sản phẩm|
 ## **4.3 Transaction Rules (Quy tắc Giao dịch)**
 
 |**BR ID**|**Rule**|**Description**|
 | :- | :- | :- |
-|**BR08**|Cơ chế Escrow|Tiền cọc giữ trung gian. Giao đúng = chuyển Seller. Hủy/sai = hoàn Buyer|
+|**BR08**|Cơ chế Escrow|Tiền cọc giữ trung gian. Giao đúng = tạo seller payout pending. Hủy/sai = tạo refund pending transfer cho Buyer|
 |**BR09**|Phí dịch vụ|Thu phí x% khi giao dịch thành công (Buyer) hoặc phí kiểm định (Seller)|
 |**BR10**|Phí đăng kí tài khoản Seller|Thu phí x khi người dùng đăng kí tài khoản Seller.|
 ## **4.4 Trust & Safety Rules (Quy tắc Tin cậy)**
 
 |**BR ID**|**Rule**|**Description**|
 | :- | :- | :- |
-|**BR11**|Điều kiện đánh giá|Buyer CHỈ được đánh giá sau khi đơn hàng "Hoàn tất"|
-|**BR12**|Xử lý tranh chấp|Kết quả từ Inspector là căn cứ ưu tiên để Admin quyết định hoàn tiền|
+|**BR11**|Điều kiện đánh giá|Buyer CHỈ được đánh giá sau khi đơn hàng "Hoàn tất". Mỗi đơn chỉ có một review và seller chỉ được reply một lần|
+|**BR12**|Xử lý tranh chấp|Kết quả từ Inspector là căn cứ ưu tiên. Admin cũng phải xem evidence bàn giao/nhận xe trước khi quyết định refund hoặc payout|
 |**BR13**|Phí xử phạt |Tự động thu phí xử phạt từ tài khoản Seller (BR10) nếu có hành vi gian lận/lừa dối|
 
 
@@ -974,6 +1009,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**Moderation**|Quá trình Admin duyệt/từ chối nội dung|
 |**Groupset**|Bộ truyền động xe đạp (líp, đùi đĩa, tay đề...)|
 |**Frame Size**|Kích thước khung xe (S/M/L/XL hoặc cm)|
+|**Size Chart**|Bảng tham chiếu theo danh mục xe để gợi ý chiều cao phù hợp với từng frame size|
 
 
 # **Appendix B: Database Schema**
@@ -1007,17 +1043,18 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**category\_id**|UUID|FK -> Categories.id|ID danh mục xe.|
 |**brake\_type\_id**|UUID|FK -> Brake\_types.id, Not Null|ID loại phanh xe.|
 |**frame\_material\_id**|UUID|FK -> Frame\_materials.id, Not Null|ID chất liệu khung xe.|
+|**groupset\_id**|UUID|FK -> Groupsets.id|ID groupset chuẩn hóa để filter và quản trị master data.|
 |**title**|VARCHAR|Not Null|Tiêu đề bài đăng.|
 |**description**|TEXT|Nullable|Mô tả chi tiết sản phẩm.|
 |**price**|NUMERIC|Not Null|Giá bán hiện tại.|
 |**original\_price**|NUMERIC|Nullable|Giá gốc (lúc mua mới).|
 |**frame\_size**|VARCHAR|Nullable|Kích thước khung (S, M, L, 52cm...).|
 |**wheel\_size**|VARCHAR|Nullable|Kích thước bánh (29", 700c...).|
-|**groupset**|VARCHAR|Nullable|Bộ truyền động (Shimano 105, SRAM Red...).|
+|**groupset**|VARCHAR|Nullable|Tên groupset dạng text để giữ tương thích dữ liệu cũ và hiển thị fallback.|
 |**condition**|ENUM|Default: 'used'|Tình trạng: new\_90, used, needs\_repair.|
 |**province**|VARCHAR|Nullable|Tỉnh/Thành phố nơi bán.|
 |**district**|VARCHAR|Nullable|Quận/Huyện nơi bán.|
-|**status**|ENUM|Default: 'pending'|Trạng thái tin: pending, active, hidden, sold.|
+|**status**|ENUM|Default: 'pending'|Trạng thái tin: pending, pending_inspection, inspected_failed, active, hidden, sold.|
 |**expires\_at**|TIMESTAMP|Nullable|Thời gian tin đăng hết hạn.|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo tin.|
 
@@ -1072,6 +1109,40 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**description**|TEXT|Nullable|Mô tả đặc tính (VD: Nhẹ, bền, chống rỉ...).|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo.|
 
+### **Groupsets**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính groupset.|
+|**name**|VARCHAR|Unique, Not Null|Tên groupset chuẩn hóa (VD: Shimano 105, SRAM Rival).|
+|**description**|TEXT|Nullable|Mô tả ngắn về groupset, số speed hoặc dòng sử dụng.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo master data groupset.|
+
+### **size_charts**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính size chart.|
+|**category\_id**|UUID|FK -> Categories.id, Unique, Not Null|Mỗi category có tối đa một bảng size chart đang hoạt động.|
+|**name**|VARCHAR|Not Null|Tên hiển thị của bảng hướng dẫn size.|
+|**description**|TEXT|Nullable|Mô tả ngắn về phạm vi áp dụng của bảng size chart.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo size chart.|
+|**updated\_at**|TIMESTAMP|Default: Now()|Thời gian cập nhật gần nhất.|
+
+### **size_chart_rows**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính dòng size chart.|
+|**size\_chart\_id**|UUID|FK -> size\_charts.id, Not Null|ID bảng size chart mà dòng này thuộc về.|
+|**frame\_size**|VARCHAR|Not Null|Frame size tương ứng, ví dụ S, M, 52, 54.|
+|**height\_min\_cm**|INT|Not Null|Chiều cao tối thiểu gợi ý cho frame size này.|
+|**height\_max\_cm**|INT|Not Null|Chiều cao tối đa gợi ý cho frame size này.|
+|**note**|TEXT|Nullable|Ghi chú bổ sung cho dòng size chart.|
+|**display\_order**|INT|Default: 0|Thứ tự hiển thị các dòng trong bảng.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo dòng size chart.|
+|**updated\_at**|TIMESTAMP|Default: Now()|Thời gian cập nhật gần nhất.|
+
 ## **B.2 Inspection System**
 ### **inspections**
 
@@ -1083,6 +1154,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**overall\_score**|NUMERIC(3,1)|Nullable|Điểm tổng kết (Thang 10 hoặc 100).|
 |**passed**|BOOLEAN|Default: false|Kết quả: Đạt chuẩn hay không.|
 |**report\_file\_url**|TEXT|Nullable|Link file PDF báo cáo chi tiết.|
+|**notes**|TEXT|Nullable|Ghi chú tổng hợp của inspector.|
 |**valid\_until**|TIMESTAMP|Nullable|Thời hạn hiệu lực của kết quả kiểm định.|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian lập báo cáo.|
 
@@ -1114,7 +1186,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian gửi tin nhắn.|
 
 ## **B.4 Transaction System**
-### **orders & transactions**
+### **orders, refund_requests & order evidences**
 
 |**Column Name**|**Data Type**|**Constraints**|**Description**|
 | :- | :- | :- | :- |
@@ -1124,11 +1196,62 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**product\_id**|UUID|FK -> Products.id|ID sản phẩm được mua.|
 |**total\_amount**|NUMERIC|Not Null|Tổng giá trị đơn hàng.|
 |**deposit\_amount**|NUMERIC|Nullable|Số tiền đặt cọc (nếu có).|
+|**required\_upfront\_amount**|NUMERIC|Not Null|Số tiền buyer bắt buộc phải trả trước ở bước hiện tại.|
+|**paid\_amount**|NUMERIC|Default: 0|Số tiền đã ghi nhận vào hệ thống.|
+|**remaining\_amount**|NUMERIC|Default: 0|Số tiền còn lại chưa thanh toán trên lý thuyết đơn hàng.|
 |**service\_fee**|NUMERIC|Nullable|Phí dịch vụ sàn thu.|
-|**status**|ENUM|Default: 'pending'|Trạng thái: pending, deposited, completed, cancelled.|
+|**status**|ENUM|Default: 'pending'|Trạng thái: pending, deposited, awaiting_buyer_confirmation, completed, cancelled.|
+|**funding\_status**|ENUM|Default: 'unpaid'|Trạng thái tiền: unpaid, awaiting_payment, held, seller_payout_pending, released, refund_pending, refund_pending_transfer, refunded.|
 |**payment\_method**|ENUM|Nullable|Phương thức: transfer, cash, online.|
+|**accepted\_at**|TIMESTAMP|Nullable|Thời điểm seller chấp nhận đơn.|
+|**payment\_deadline**|TIMESTAMP|Nullable|Hạn cuối buyer phải hoàn tất khoản trả trước.|
+|**cancel\_reason**|ENUM|Nullable|Lý do hủy đơn: buyer\_cancelled, seller\_cancelled, admin\_cancelled, payment\_expired.|
+|**cancelled\_at**|TIMESTAMP|Nullable|Thời điểm đơn hàng bị hủy.|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo đơn.|
-### **         
+|**updated\_at**|TIMESTAMP|Default: Now()|Thời gian cập nhật đơn gần nhất.|
+
+### **refund_requests**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính yêu cầu hoàn tiền.|
+|**order\_id**|UUID|FK -> Orders.id, Not Null|Đơn hàng bị yêu cầu hoàn tiền.|
+|**payment\_id**|UUID|FK -> Payments.id, Not Null|Giao dịch thanh toán liên quan.|
+|**requester\_id**|UUID|FK -> Users.id, Not Null|Người gửi yêu cầu hoàn tiền, thường là buyer.|
+|**amount**|NUMERIC|Not Null|Số tiền cần hoàn.|
+|**reason**|TEXT|Not Null|Lý do hoàn tiền.|
+|**evidence\_note**|TEXT|Nullable|Ghi chú bằng chứng do requester cung cấp.|
+|**status**|ENUM|Default: 'pending'|Trạng thái: pending, approved, rejected, completed.|
+|**admin\_note**|TEXT|Nullable|Kết luận hoặc ghi chú của admin.|
+|**refund\_reference**|VARCHAR|Nullable|Mã tham chiếu ngân hàng khi hoàn tiền thật.|
+|**reviewed\_by**|UUID|FK -> Users.id|Admin đã xử lý yêu cầu.|
+|**reviewed\_at**|TIMESTAMP|Nullable|Thời điểm admin review.|
+|**processed\_at**|TIMESTAMP|Nullable|Thời điểm hoàn tiền thật được xác nhận xong.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo yêu cầu.|
+
+### **order_evidence_submissions**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính của một lần nộp chứng cứ.|
+|**order\_id**|UUID|FK -> Orders.id, Not Null|Đơn hàng liên quan.|
+|**submitted\_by\_user\_id**|UUID|FK -> Users.id, Not Null|Người đã gửi chứng cứ.|
+|**submitted\_by\_role**|ENUM|Not Null|Vai trò của người gửi: buyer, seller, admin...|
+|**evidence\_type**|ENUM|Not Null|Loại chứng cứ: seller_handover, buyer_receipt.|
+|**note**|TEXT|Nullable|Ghi chú kèm bộ ảnh chứng cứ.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo submission.|
+
+### **order_evidence_files**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính file chứng cứ.|
+|**submission\_id**|UUID|FK -> order_evidence_submissions.id, Not Null|Submission mà file thuộc về.|
+|**file\_url**|TEXT|Not Null|Đường dẫn file ảnh trên storage.|
+|**file\_name**|VARCHAR|Nullable|Tên file gốc để hiển thị lại trên UI.|
+|**content\_type**|VARCHAR|Nullable|Kiểu MIME của file, ví dụ image/jpeg.|
+|**sort\_order**|INT|Default: 0|Thứ tự hiển thị của ảnh trong submission.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian upload file.|
 
 ## **B.5 Trust & Safety**
 ### **reviews, reports, notifications**
@@ -1142,6 +1265,8 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**reviewee\_id**|UUID|FK -> Users.id|ID người nhận đánh giá (Target User).|
 |**rating**|INT|Check (1-5)|Điểm số đánh giá (Sao). Thường từ 1 đến 5.|
 |**comment**|TEXT|Nullable|Nội dung nhận xét chi tiết.|
+|**seller\_reply**|TEXT|Nullable|Phản hồi của seller cho review này.|
+|**seller\_replied\_at**|TIMESTAMP|Nullable|Thời điểm seller gửi phản hồi.|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian gửi đánh giá.|
 
 
@@ -1173,7 +1298,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian gửi.|
 
 
-## **B.6 Payment** 
+## **B.6 Payment & Payout** 
 
 ### **Payment**
 
@@ -1182,12 +1307,50 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**id**|UUID|PK, Not Null|Khóa chính giao dịch thanh toán.|
 |**order\_id**|UUID|FK -> Orders.id, Not Null|ID đơn hàng liên quan.|
 |**amount**|NUMERIC|Not Null|Số tiền thanh toán thực tế.|
+|**gateway**|ENUM|Not Null|Cổng thanh toán: manual, sepay...|
 |**method**|ENUM|Not Null|Phương thức thanh toán (online, transfer...).|
-|**status**|ENUM|Default: 'pending'|pending, processing, success, failed, refunded.|
+|**phase**|ENUM|Not Null|Giai đoạn thanh toán: upfront hoặc remaining.|
+|**status**|ENUM|Default: 'pending'|pending, processing, success, failed, expired, refunded.|
+|**gateway\_order\_code**|VARCHAR|Nullable|Mã nội bộ dùng để đối chiếu webhook từ cổng thanh toán.|
 |**transaction\_reference**|VARCHAR|Unique|Mã giao dịch từ bên thứ 3 (Momo/VNPay/Stripe).|
+|**checkout\_url**|TEXT|Nullable|Link checkout do gateway trả về nếu có.|
+|**qr\_code\_url**|TEXT|Nullable|Link QR thanh toán hiện cho buyer.|
 |**gateway\_response**|JSONB|Nullable|Dữ liệu phản hồi nguyên bản từ cổng thanh toán.|
 |**payment\_date**|TIMESTAMP|Nullable|Thời gian thanh toán thành công.|
+|**expires\_at**|TIMESTAMP|Nullable|Thời điểm yêu cầu thanh toán hết hiệu lực ở phía hệ thống/gateway.|
 |**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo yêu cầu thanh toán.|
+|**updated\_at**|TIMESTAMP|Default: Now()|Thời gian cập nhật payment gần nhất.|
+
+### **payout_profiles**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính payout profile.|
+|**user\_id**|UUID|FK -> Users.id, Unique, Not Null|Người sở hữu tài khoản nhận tiền.|
+|**bank\_name**|VARCHAR|Not Null|Tên ngân hàng nhận tiền.|
+|**bank\_bin**|VARCHAR|Not Null|Mã BIN ngân hàng dùng để sinh VietQR.|
+|**account\_number**|VARCHAR|Not Null|Số tài khoản nhận tiền.|
+|**account\_holder\_name**|VARCHAR|Not Null|Tên chủ tài khoản nhận tiền.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo profile.|
+|**updated\_at**|TIMESTAMP|Default: Now()|Thời gian cập nhật gần nhất.|
+
+### **payouts**
+
+|**Column Name**|**Data Type**|**Constraints**|**Description**|
+| :- | :- | :- | :- |
+|**id**|UUID|PK, Not Null|Khóa chính payout.|
+|**user\_id**|UUID|FK -> Users.id, Not Null|Người nhận tiền thật.|
+|**order\_id**|UUID|FK -> Orders.id|Đơn hàng liên quan nếu là payout cho seller.|
+|**refund\_request\_id**|UUID|FK -> refund_requests.id|Yêu cầu refund liên quan nếu là payout cho buyer.|
+|**payout\_profile\_id**|UUID|FK -> payout_profiles.id, Not Null|Tài khoản nhận tiền được dùng để chuyển khoản.|
+|**type**|ENUM|Not Null|Loại payout: seller\_release hoặc buyer\_refund.|
+|**amount**|NUMERIC|Not Null|Số tiền cần chuyển.|
+|**status**|ENUM|Default: 'pending'|Trạng thái: pending, completed, cancelled.|
+|**transfer\_content**|VARCHAR|Nullable|Nội dung chuyển khoản/VietQR gợi ý cho kế toán.|
+|**bank\_reference**|VARCHAR|Nullable|Mã giao dịch thật sau khi công ty chuyển tiền thành công.|
+|**processed\_by**|UUID|FK -> Users.id|Admin đã đánh dấu complete payout.|
+|**processed\_at**|TIMESTAMP|Nullable|Thời điểm payout thật hoàn tất.|
+|**created\_at**|TIMESTAMP|Default: Now()|Thời gian tạo payout record.|
 
 
 ## **B.7 Wishlist**

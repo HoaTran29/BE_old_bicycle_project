@@ -25,16 +25,19 @@ public class ProductResponse {
     private String district;
     private String frameSize;
     private String wheelSize;
+    private UUID groupsetId;
     private String groupset;
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;
     private SellerInfo seller;
     private String brandName;
+    private UUID categoryId;
     private String categoryName;
     private String brakeTypeName;
     private String frameMaterialName;
     private List<ImageInfo> images;
     private boolean isVerified;
+    private boolean lockedForTransaction;
     private InspectionInfo inspection;
 
     @Data

@@ -5,6 +5,7 @@ public enum PaymentStatus {
     processing("processing"),
     success("success"),
     failed("failed"),
+    expired("expired"),
     refunded("refunded");
 
     private final String status;

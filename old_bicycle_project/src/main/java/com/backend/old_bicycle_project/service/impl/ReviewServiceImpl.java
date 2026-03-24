@@ -1,5 +1,6 @@
 package com.backend.old_bicycle_project.service.impl;
 
+import com.backend.old_bicycle_project.dto.request.ReviewReplyRequestDTO;
 import com.backend.old_bicycle_project.dto.request.ReviewRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ReviewResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
@@ -18,6 +19,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -60,12 +62,13 @@ public class ReviewServiceImpl implements ReviewService {
                 .comment(requestDTO.getComment())
                 .build();
 
-        review = reviewRepository.save(review);
+        review = reviewRepository.saveAndFlush(review);
 
         // Update Seller's average rating
         updateSellerAverageRating(reviewee, requestDTO.getRating());
 
-        return mapToDTO(review);
+        Review hydratedReview = reviewRepository.findWithDetailsById(review.getId()).orElse(review);
+        return mapToDTO(hydratedReview);
     }
 
     @Override
@@ -76,6 +79,22 @@ public class ReviewServiceImpl implements ReviewService {
 
         Page<Review> reviews = reviewRepository.findByRevieweeIdOrderByCreatedAtDesc(sellerId, pageable);
         return reviews.map(this::mapToDTO);
+    }
+
+    @Override
+    @Transactional
+    public ReviewResponseDTO replyToReview(UUID reviewId, UUID currentUserId, ReviewReplyRequestDTO requestDTO) {
+        Review review = reviewRepository.findWithDetailsById(reviewId)
+                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
+
+        if (!review.getReviewee().getId().equals(currentUserId)) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
+
+        review.setSellerReply(requestDTO.getReply().trim());
+        review.setSellerRepliedAt(LocalDateTime.now());
+
+        return mapToDTO(reviewRepository.save(review));
     }
 
     private void updateSellerAverageRating(User seller, int newRating) {
@@ -104,6 +123,8 @@ public class ReviewServiceImpl implements ReviewService {
                 .revieweeName(review.getReviewee().getFullName())
                 .rating(review.getRating())
                 .comment(review.getComment())
+                .sellerReply(review.getSellerReply())
+                .sellerRepliedAt(review.getSellerRepliedAt())
                 .createdAt(review.getCreatedAt())
                 .build();
     }

@@ -14,4 +14,6 @@ public interface PaymentService {
     List<PaymentResponseDTO> getOrderPayments(UUID orderId, User currentUser);
 
     void handleSepayWebhook(String rawPayload, String authorizationHeader);
+
+    int expireOverdueUpfrontPayments();
 }

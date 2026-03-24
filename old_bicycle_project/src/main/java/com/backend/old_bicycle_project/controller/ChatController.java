@@ -127,6 +127,10 @@ public class ChatController {
         if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
-        return UUID.fromString(principal.getName());
+        try {
+            return UUID.fromString(principal.getName());
+        } catch (IllegalArgumentException ex) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
     }
 }

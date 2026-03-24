@@ -2,6 +2,7 @@ package com.backend.old_bicycle_project.dto.response;
 
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
+import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
 import lombok.AllArgsConstructor;
@@ -35,8 +36,13 @@ public class OrderResponseDTO {
     private OrderStatus status;
     private OrderFundingStatus fundingStatus;
     private PaymentMethod paymentMethod;
+    private boolean buyerReviewSubmitted;
+    private OrderEvidenceSubmissionResponseDTO sellerHandoverEvidence;
+    private OrderEvidenceSubmissionResponseDTO buyerReceiptEvidence;
     private LocalDateTime acceptedAt;
     private LocalDateTime paymentDeadline;
+    private OrderCancelReason cancelReason;
+    private LocalDateTime cancelledAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

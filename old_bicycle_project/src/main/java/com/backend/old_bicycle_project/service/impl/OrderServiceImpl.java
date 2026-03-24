@@ -2,14 +2,19 @@ package com.backend.old_bicycle_project.service.impl;
 
 import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.OrderCreateRequestDTO;
+import com.backend.old_bicycle_project.dto.response.OrderEvidenceSubmissionResponseDTO;
 import com.backend.old_bicycle_project.dto.response.OrderResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
+import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
+import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
+import com.backend.old_bicycle_project.entity.enums.OrderEvidenceType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
+import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
@@ -17,7 +22,10 @@ import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
+import com.backend.old_bicycle_project.repository.ReviewRepository;
+import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.OrderService;
+import com.backend.old_bicycle_project.service.PayoutService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -25,8 +33,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -34,7 +46,10 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
+    private final ReviewRepository reviewRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final PayoutService payoutService;
+    private final OrderEvidenceService orderEvidenceService;
 
     @Override
     @Transactional
@@ -52,7 +67,12 @@ public class OrderServiceImpl implements OrderService {
 
         if (orderRepository.existsByProductIdAndStatusIn(
                 product.getId(),
-                List.of(OrderStatus.pending, OrderStatus.deposited, OrderStatus.completed))) {
+                List.of(
+                        OrderStatus.pending,
+                        OrderStatus.deposited,
+                        OrderStatus.awaiting_buyer_confirmation,
+                        OrderStatus.completed
+                ))) {
             throw new AppException(ErrorCode.RECORD_ALREADY_EXISTS);
         }
 
@@ -88,8 +108,20 @@ public class OrderServiceImpl implements OrderService {
                 ? orderRepository.findAllByOrderByCreatedAtDesc()
                 : orderRepository.findByBuyerIdOrSellerIdOrderByCreatedAtDesc(currentUser.getId(), currentUser.getId());
 
+        Set<UUID> reviewedOrderIds = orders.isEmpty()
+                ? Collections.emptySet()
+                : reviewRepository.findReviewedOrderIdsByOrderIds(
+                orders.stream().map(Order::getId).toList()
+        );
+        Map<UUID, Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO>> evidenceByOrder =
+                orderEvidenceService.getEvidenceByOrderIds(orders.stream().map(Order::getId).toList());
+
         return orders.stream()
-                .map(this::mapToDTO)
+                .map(order -> mapToDTO(
+                        order,
+                        reviewedOrderIds.contains(order.getId()),
+                        evidenceByOrder.getOrDefault(order.getId(), Collections.emptyMap())
+                ))
                 .toList();
     }
 
@@ -110,8 +142,8 @@ public class OrderServiceImpl implements OrderService {
 
         publishOrderNotification(
                 order.getBuyer().getId(),
-                "Yeu cau dat coc da duoc chap nhan",
-                "Nguoi ban da chap nhan order va ban co the thanh toan tien ung truoc.",
+                "Yêu cầu đặt cọc đã được chấp nhận",
+                "Người bán đã chấp nhận đơn hàng và bạn có thể thanh toán tiền ứng trước.",
                 "{\"orderId\":\"" + order.getId() + "\"}"
         );
 
@@ -131,6 +163,14 @@ public class OrderServiceImpl implements OrderService {
         if (order.getPaymentMethod() != PaymentMethod.cash) {
             throw new AppException(ErrorCode.PAYMENT_METHOD_NOT_SUPPORTED);
         }
+        if (order.getPaymentDeadline() != null && order.getPaymentDeadline().isBefore(LocalDateTime.now())) {
+            order.setStatus(OrderStatus.cancelled);
+            order.setFundingStatus(OrderFundingStatus.unpaid);
+            order.setCancelReason(OrderCancelReason.payment_expired);
+            order.setCancelledAt(LocalDateTime.now());
+            orderRepository.save(order);
+            throw new AppException(ErrorCode.PAYMENT_EXPIRED);
+        }
 
         order.setStatus(OrderStatus.deposited);
         order.setAcceptedAt(order.getAcceptedAt() != null ? order.getAcceptedAt() : LocalDateTime.now());
@@ -142,7 +182,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponseDTO completeOrder(UUID orderId, User currentUser) {
+    public OrderResponseDTO completeOrder(UUID orderId, User currentUser, String note, List<MultipartFile> files) {
         Order order = getOrder(orderId);
         validateSellerOrAdmin(order, currentUser);
 
@@ -150,13 +190,69 @@ public class OrderServiceImpl implements OrderService {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
+        order.setStatus(OrderStatus.awaiting_buyer_confirmation);
+        order = orderRepository.save(order);
+        OrderEvidenceSubmissionResponseDTO sellerEvidence =
+                orderEvidenceService.createSellerHandoverEvidence(order, currentUser, note, files);
+
+        publishOrderNotification(
+                order.getBuyer().getId(),
+                "Người bán đã báo giao xe",
+                "Hãy xác nhận bạn đã nhận xe để hệ thống chuyển sang bước giải ngân cho người bán.",
+                "{\"orderId\":\"" + order.getId() + "\"}"
+        );
+
+        return mapToDTO(
+                order,
+                reviewRepository.existsByOrderId(order.getId()),
+                Map.of(OrderEvidenceType.seller_handover, sellerEvidence)
+        );
+    }
+
+    @Override
+    @Transactional
+    public OrderResponseDTO confirmReceived(UUID orderId, User currentUser, String note, List<MultipartFile> files) {
+        Order order = getOrder(orderId);
+        validateBuyerOrAdmin(order, currentUser);
+
+        if (order.getStatus() != OrderStatus.awaiting_buyer_confirmation
+                || order.getFundingStatus() != OrderFundingStatus.held) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+
         order.setStatus(OrderStatus.completed);
-        order.setFundingStatus(OrderFundingStatus.released);
+        order.setFundingStatus(OrderFundingStatus.seller_payout_pending);
         order.setPaidAmount(order.getTotalAmount());
         order.setRemainingAmount(BigDecimal.ZERO);
         order.getProduct().setStatus(ProductStatus.sold);
         productRepository.save(order.getProduct());
-        return mapToDTO(orderRepository.save(order));
+        order = orderRepository.save(order);
+
+        Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO> evidenceByType =
+                new java.util.EnumMap<>(OrderEvidenceType.class);
+        evidenceByType.putAll(orderEvidenceService.getEvidenceByOrderId(order.getId()));
+
+        Payout payout = payoutService.ensureSellerReleasePayout(order);
+        OrderEvidenceSubmissionResponseDTO buyerEvidence =
+                orderEvidenceService.createBuyerReceiptEvidence(order, currentUser, note, files);
+        if (buyerEvidence != null) {
+            evidenceByType.put(OrderEvidenceType.buyer_receipt, buyerEvidence);
+        }
+
+        publishOrderNotification(
+                order.getSeller().getId(),
+                "Người mua đã xác nhận nhận xe",
+                payout.getStatus() == PayoutStatus.profile_required
+                        ? "Giao dịch đã hoàn tất. Hãy cập nhật payout profile để nhận khoản cọc."
+                        : "Giao dịch đã hoàn tất. Khoản cọc đang chờ admin chuyển khoản thủ công cho bạn.",
+                "{\"orderId\":\"" + order.getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
+        );
+
+        return mapToDTO(
+                order,
+                reviewRepository.existsByOrderId(order.getId()),
+                evidenceByType
+        );
     }
 
     @Override
@@ -174,8 +270,11 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() == OrderStatus.completed
                 || order.getStatus() == OrderStatus.cancelled
                 || order.getStatus() == OrderStatus.deposited
+                || order.getStatus() == OrderStatus.awaiting_buyer_confirmation
                 || order.getFundingStatus() == OrderFundingStatus.held
                 || order.getFundingStatus() == OrderFundingStatus.refund_pending
+                || order.getFundingStatus() == OrderFundingStatus.refund_pending_transfer
+                || order.getFundingStatus() == OrderFundingStatus.seller_payout_pending
                 || order.getFundingStatus() == OrderFundingStatus.released
                 || order.getFundingStatus() == OrderFundingStatus.refunded) {
             throw new AppException(ErrorCode.INVALID_STATUS);
@@ -184,6 +283,14 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(OrderStatus.cancelled);
         if (order.getFundingStatus() == OrderFundingStatus.awaiting_payment) {
             order.setFundingStatus(OrderFundingStatus.unpaid);
+        }
+        order.setCancelledAt(LocalDateTime.now());
+        if (currentUser.getRole() == AppRole.admin) {
+            order.setCancelReason(OrderCancelReason.admin_cancelled);
+        } else if (order.getSeller().getId().equals(currentUser.getId())) {
+            order.setCancelReason(OrderCancelReason.seller_cancelled);
+        } else {
+            order.setCancelReason(OrderCancelReason.buyer_cancelled);
         }
         return mapToDTO(orderRepository.save(order));
     }
@@ -222,6 +329,14 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    private void validateBuyerOrAdmin(Order order, User currentUser) {
+        boolean isBuyerOrAdmin = currentUser.getRole() == AppRole.admin
+                || order.getBuyer().getId().equals(currentUser.getId());
+        if (!isBuyerOrAdmin) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
+    }
+
     private void publishOrderNotification(UUID userId, String title, String content, String metadata) {
         eventPublisher.publishEvent(new NotificationEvent(
                 this,
@@ -234,6 +349,18 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderResponseDTO mapToDTO(Order order) {
+        return mapToDTO(
+                order,
+                reviewRepository.existsByOrderId(order.getId()),
+                orderEvidenceService.getEvidenceByOrderId(order.getId())
+        );
+    }
+
+    private OrderResponseDTO mapToDTO(
+            Order order,
+            boolean buyerReviewSubmitted,
+            Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO> evidenceByType
+    ) {
         return OrderResponseDTO.builder()
                 .id(order.getId())
                 .productId(order.getProduct().getId())
@@ -252,8 +379,13 @@ public class OrderServiceImpl implements OrderService {
                 .status(order.getStatus())
                 .fundingStatus(order.getFundingStatus())
                 .paymentMethod(order.getPaymentMethod())
+                .buyerReviewSubmitted(buyerReviewSubmitted)
+                .sellerHandoverEvidence(evidenceByType.get(OrderEvidenceType.seller_handover))
+                .buyerReceiptEvidence(evidenceByType.get(OrderEvidenceType.buyer_receipt))
                 .acceptedAt(order.getAcceptedAt())
                 .paymentDeadline(order.getPaymentDeadline())
+                .cancelReason(order.getCancelReason())
+                .cancelledAt(order.getCancelledAt())
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
                 .build();

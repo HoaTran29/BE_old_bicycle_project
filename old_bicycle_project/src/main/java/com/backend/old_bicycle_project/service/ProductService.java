@@ -8,10 +8,12 @@ import com.backend.old_bicycle_project.entity.Brand;
 import com.backend.old_bicycle_project.entity.BrakeType;
 import com.backend.old_bicycle_project.entity.Category;
 import com.backend.old_bicycle_project.entity.FrameMaterial;
+import com.backend.old_bicycle_project.entity.Groupset;
 import com.backend.old_bicycle_project.entity.Inspection;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.ProductImage;
 import com.backend.old_bicycle_project.entity.User;
+import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
@@ -19,7 +21,9 @@ import com.backend.old_bicycle_project.repository.BrandRepository;
 import com.backend.old_bicycle_project.repository.BrakeTypeRepository;
 import com.backend.old_bicycle_project.repository.CategoryRepository;
 import com.backend.old_bicycle_project.repository.FrameMaterialRepository;
+import com.backend.old_bicycle_project.repository.GroupsetRepository;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
+import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.specification.ProductSpecification;
@@ -35,8 +39,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,17 +52,21 @@ public class ProductService {
 
     private static final List<ProductStatus> PUBLIC_VISIBLE_STATUSES = List.of(
             ProductStatus.active,
-            ProductStatus.pending_inspection,
-            ProductStatus.inspected_passed,
-            ProductStatus.inspected_failed
+            ProductStatus.inspected_passed
     );
-
+    private static final List<OrderStatus> ACTIVE_TRANSACTION_STATUSES = List.of(
+            OrderStatus.pending,
+            OrderStatus.deposited,
+            OrderStatus.awaiting_buyer_confirmation
+    );
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
+    private final OrderRepository orderRepository;
     private final BrandRepository brandRepository;
     private final CategoryRepository categoryRepository;
     private final BrakeTypeRepository brakeTypeRepository;
     private final FrameMaterialRepository frameMaterialRepository;
+    private final GroupsetRepository groupsetRepository;
     private final InspectionRepository inspectionRepository;
     private final StorageService storageService;
 
@@ -64,16 +75,54 @@ public class ProductService {
         Sort sort = buildSort(filter);
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        return productRepository.findAll(spec, pageable)
-                .map(this::toResponse);
+        return mapProductPage(productRepository.findAll(spec, pageable));
     }
 
     public ProductResponse getById(UUID id) {
         Product product = findActiveProductById(id);
-        if (!PUBLIC_VISIBLE_STATUSES.contains(product.getStatus())) {
+        Inspection inspection = inspectionRepository.findByProductId(product.getId()).orElse(null);
+        if (!PUBLIC_VISIBLE_STATUSES.contains(product.getStatus()) || !isInspectionCurrentlyValid(product, inspection)) {
             throw new AppException(ErrorCode.PRODUCT_NOT_FOUND);
         }
+
+        List<ProductImage> productImages = productImageRepository.findByProductIdOrderByDisplayOrderAsc(product.getId());
+        if ((productImages == null || productImages.isEmpty()) && product.getImages() != null) {
+            productImages = product.getImages();
+        }
+
+        List<ProductResponse.ImageInfo> imageInfos = productImages.stream()
+                .map(img -> ProductResponse.ImageInfo.builder()
+                        .id(img.getId())
+                        .url(img.getUrl())
+                        .isPrimary(img.isPrimary())
+                        .displayOrder(img.getDisplayOrder())
+                        .build())
+                .collect(Collectors.toList());
+
+        User seller = product.getSeller();
+        ProductResponse.SellerInfo sellerInfo = seller != null
+                ? ProductResponse.SellerInfo.builder()
+                .id(seller.getId())
+                .firstName(seller.getFirstName())
+                .lastName(seller.getLastName())
+                .avatarUrl(seller.getAvatarUrl())
+                .phone(seller.getPhone())
+                .build()
+                : null;
+
+        return buildProductResponse(product, inspection, hasActiveTransaction(product.getId()), imageInfos, sellerInfo);
+    }
+
+    public ProductResponse getMineById(UUID id, User currentUser) {
+        Product product = findActiveProductById(id);
+        if (!product.getSeller().getId().equals(currentUser.getId())) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
         return toResponse(product);
+    }
+
+    public ProductResponse getAdminById(UUID id) {
+        return toResponse(findActiveProductById(id));
     }
 
     @Transactional
@@ -92,6 +141,7 @@ public class ProductService {
         Category category = request.getCategoryId() != null
                 ? categoryRepository.findById(request.getCategoryId()).orElse(null)
                 : null;
+        Groupset groupsetReference = resolveGroupsetReference(request.getGroupsetId(), request.getGroupset());
 
         Product product = Product.builder()
                 .seller(seller)
@@ -103,9 +153,10 @@ public class ProductService {
                 .category(category)
                 .brakeType(brakeType)
                 .frameMaterial(frameMaterial)
+                .groupsetReference(groupsetReference)
                 .frameSize(request.getFrameSize())
                 .wheelSize(request.getWheelSize())
-                .groupset(request.getGroupset())
+                .groupset(resolveGroupsetDisplayValue(groupsetReference, request.getGroupset()))
                 .condition(request.getCondition() != null ? request.getCondition() : com.backend.old_bicycle_project.entity.enums.ConditionType.used)
                 .province(request.getProvince())
                 .district(request.getDistrict())
@@ -123,10 +174,7 @@ public class ProductService {
     @Transactional
     public ProductResponse update(UUID id, ProductUpdateRequest request, List<MultipartFile> newImages, User currentUser) {
         Product product = findActiveProductById(id);
-
-        if (!product.getSeller().getId().equals(currentUser.getId())) {
-            throw new AppException(ErrorCode.FORBIDDEN);
-        }
+        validateSellerCanModify(product, currentUser);
 
         if (request.getTitle() != null) product.setTitle(request.getTitle());
         if (request.getDescription() != null) product.setDescription(request.getDescription());
@@ -137,7 +185,11 @@ public class ProductService {
         if (request.getDistrict() != null) product.setDistrict(request.getDistrict());
         if (request.getFrameSize() != null) product.setFrameSize(request.getFrameSize());
         if (request.getWheelSize() != null) product.setWheelSize(request.getWheelSize());
-        if (request.getGroupset() != null) product.setGroupset(request.getGroupset());
+        if (request.getGroupsetId() != null || request.getGroupset() != null) {
+            Groupset groupsetReference = resolveGroupsetReference(request.getGroupsetId(), request.getGroupset());
+            product.setGroupsetReference(groupsetReference);
+            product.setGroupset(resolveGroupsetDisplayValue(groupsetReference, request.getGroupset()));
+        }
 
         validateRequiredTechnicalFields(product.getFrameSize(), product.getWheelSize());
 
@@ -174,10 +226,7 @@ public class ProductService {
     @Transactional
     public void delete(UUID id, User currentUser) {
         Product product = findActiveProductById(id);
-
-        if (!product.getSeller().getId().equals(currentUser.getId())) {
-            throw new AppException(ErrorCode.FORBIDDEN);
-        }
+        validateSellerCanModify(product, currentUser);
 
         removeStoredImages(product);
         product.setDeletedAt(LocalDateTime.now());
@@ -186,38 +235,87 @@ public class ProductService {
         productRepository.save(product);
     }
 
+    @Transactional
+    public ProductResponse hide(UUID id, User currentUser) {
+        Product product = findActiveProductById(id);
+        validateSellerCanModify(product, currentUser);
+
+        product.setStatus(ProductStatus.hidden);
+        return toResponse(productRepository.save(product));
+    }
+
+    @Transactional
+    public ProductResponse show(UUID id, User currentUser) {
+        Product product = findActiveProductById(id);
+        validateSellerCanModify(product, currentUser);
+
+        if (product.getStatus() != ProductStatus.hidden) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+
+        product.setStatus(ProductStatus.pending);
+        product.setExpiresAt(LocalDateTime.now().plusDays(30));
+        invalidateInspection(product);
+        return toResponse(productRepository.save(product));
+    }
+
     public Page<ProductResponse> getMyProducts(User currentUser, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return productRepository.findBySellerIdAndDeletedAtIsNull(currentUser.getId(), pageable)
-                .map(this::toResponse);
+        return mapProductPage(productRepository.findBySellerIdAndDeletedAtIsNull(currentUser.getId(), pageable));
     }
 
     public Page<ProductResponse> getAllForAdmin(ProductStatus status, int page, int size) {
+        return getAllForAdmin(status, null, null, page, size);
+    }
+
+    public Page<ProductResponse> getAllForAdmin(ProductStatus status, UUID sellerId, String keyword, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        if (status != null) {
-            return productRepository.findByStatusAndDeletedAtIsNull(status, pageable).map(this::toResponse);
-        }
-        return productRepository.findAllByDeletedAtIsNull(pageable).map(this::toResponse);
+        Specification<Product> specification = ProductSpecification.fromAdminFilter(status, sellerId, keyword);
+        return mapProductPage(productRepository.findAll(specification, pageable));
     }
 
     @Transactional
     public ProductResponse changeStatus(UUID id, ProductStatus newStatus) {
         Product product = findActiveProductById(id);
+        if (product.getStatus() == ProductStatus.sold) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+
+        if (newStatus == ProductStatus.hidden) {
+            product.setStatus(ProductStatus.hidden);
+            return toResponse(productRepository.save(product));
+        }
+
+        if (newStatus == ProductStatus.active) {
+            Inspection inspection = inspectionRepository.findByProductId(product.getId()).orElse(null);
+            if (!isInspectionCurrentlyValid(product, inspection)) {
+                throw new AppException(ErrorCode.INVALID_STATUS);
+            }
+            product.setStatus(ProductStatus.active);
+            return toResponse(productRepository.save(product));
+        }
+
+        if (newStatus != ProductStatus.pending) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+
         product.setStatus(newStatus);
         return toResponse(productRepository.save(product));
     }
 
     public ProductResponse toResponse(Product product) {
-        List<ProductResponse.ImageInfo> imageInfos = product.getImages() != null
-                ? product.getImages().stream()
+        List<ProductImage> productImages = productImageRepository.findByProductIdOrderByDisplayOrderAsc(product.getId());
+        if ((productImages == null || productImages.isEmpty()) && product.getImages() != null) {
+            productImages = product.getImages();
+        }
+        List<ProductResponse.ImageInfo> imageInfos = productImages.stream()
                 .map(img -> ProductResponse.ImageInfo.builder()
                         .id(img.getId())
                         .url(img.getUrl())
                         .isPrimary(img.isPrimary())
                         .displayOrder(img.getDisplayOrder())
                         .build())
-                .collect(Collectors.toList())
-                : List.of();
+                .collect(Collectors.toList());
 
         User seller = product.getSeller();
         ProductResponse.SellerInfo sellerInfo = seller != null
@@ -231,6 +329,75 @@ public class ProductService {
                 : null;
 
         Inspection inspection = inspectionRepository.findByProductId(product.getId()).orElse(null);
+        return buildProductResponse(product, inspection, hasActiveTransaction(product.getId()), imageInfos, sellerInfo);
+    }
+
+    private Page<ProductResponse> mapProductPage(Page<Product> productsPage) {
+        if (productsPage.isEmpty()) {
+            return productsPage.map(this::toResponse);
+        }
+
+        List<Product> products = productsPage.getContent();
+        List<UUID> productIds = products.stream()
+                .map(Product::getId)
+                .toList();
+
+        Map<UUID, Inspection> inspectionsByProductId = inspectionRepository.findByProductIdIn(productIds).stream()
+                .collect(Collectors.toMap(
+                        inspection -> inspection.getProduct().getId(),
+                        Function.identity(),
+                        (left, right) -> left
+                ));
+
+        Map<UUID, List<ProductImage>> imagesByProductId = productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(productIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        image -> image.getProduct().getId(),
+                        Collectors.toList()
+                ));
+
+        HashSet<UUID> lockedProductIds = new HashSet<>(
+                orderRepository.findLockedProductIdsByProductIdsAndStatuses(productIds, ACTIVE_TRANSACTION_STATUSES)
+        );
+
+        return productsPage.map(product -> {
+            List<ProductResponse.ImageInfo> imageInfos = imagesByProductId.getOrDefault(product.getId(), List.of()).stream()
+                    .map(img -> ProductResponse.ImageInfo.builder()
+                            .id(img.getId())
+                            .url(img.getUrl())
+                            .isPrimary(img.isPrimary())
+                            .displayOrder(img.getDisplayOrder())
+                            .build())
+                    .collect(Collectors.toList());
+
+            User seller = product.getSeller();
+            ProductResponse.SellerInfo sellerInfo = seller != null
+                    ? ProductResponse.SellerInfo.builder()
+                    .id(seller.getId())
+                    .firstName(seller.getFirstName())
+                    .lastName(seller.getLastName())
+                    .avatarUrl(seller.getAvatarUrl())
+                    .phone(seller.getPhone())
+                    .build()
+                    : null;
+
+            return buildProductResponse(
+                    product,
+                    inspectionsByProductId.get(product.getId()),
+                    lockedProductIds.contains(product.getId()),
+                    imageInfos,
+                    sellerInfo
+            );
+        });
+    }
+
+    private ProductResponse buildProductResponse(
+            Product product,
+            Inspection inspection,
+            boolean lockedForTransaction,
+            List<ProductResponse.ImageInfo> imageInfos,
+            ProductResponse.SellerInfo sellerInfo
+    ) {
         boolean verified = isInspectionCurrentlyValid(product, inspection);
         ProductResponse.InspectionInfo inspectionInfo = inspection != null
                 ? ProductResponse.InspectionInfo.builder()
@@ -255,16 +422,19 @@ public class ProductService {
                 .district(product.getDistrict())
                 .frameSize(product.getFrameSize())
                 .wheelSize(product.getWheelSize())
-                .groupset(product.getGroupset())
+                .groupsetId(product.getGroupsetReference() != null ? product.getGroupsetReference().getId() : null)
+                .groupset(resolveGroupsetDisplayValue(product.getGroupsetReference(), product.getGroupset()))
                 .createdAt(product.getCreatedAt())
                 .expiresAt(product.getExpiresAt())
                 .seller(sellerInfo)
                 .brandName(product.getBrand() != null ? product.getBrand().getName() : null)
+                .categoryId(product.getCategory() != null ? product.getCategory().getId() : null)
                 .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
                 .brakeTypeName(product.getBrakeType() != null ? product.getBrakeType().getName() : null)
                 .frameMaterialName(product.getFrameMaterial() != null ? product.getFrameMaterial().getName() : null)
                 .images(imageInfos)
                 .isVerified(verified)
+                .lockedForTransaction(lockedForTransaction)
                 .inspection(inspectionInfo)
                 .build();
     }
@@ -285,9 +455,43 @@ public class ProductService {
         };
     }
 
+    private Groupset resolveGroupsetReference(UUID groupsetId, String groupsetName) {
+        if (groupsetId != null) {
+            return groupsetRepository.findById(groupsetId)
+                    .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+        }
+        if (groupsetName == null || groupsetName.isBlank()) {
+            return null;
+        }
+        return groupsetRepository.findByNameIgnoreCase(groupsetName.trim()).orElse(null);
+    }
+
+    private String resolveGroupsetDisplayValue(Groupset groupsetReference, String fallbackGroupset) {
+        if (groupsetReference != null) {
+            return groupsetReference.getName();
+        }
+        if (fallbackGroupset == null) {
+            return null;
+        }
+        String normalizedGroupset = fallbackGroupset.trim();
+        return normalizedGroupset.isEmpty() ? null : normalizedGroupset;
+    }
+
     private void validateRequiredTechnicalFields(String frameSize, String wheelSize) {
         if (frameSize == null || frameSize.isBlank() || wheelSize == null || wheelSize.isBlank()) {
             throw new AppException(ErrorCode.PRODUCT_TECHNICAL_FIELDS_REQUIRED);
+        }
+    }
+
+    private void validateSellerCanModify(Product product, User currentUser) {
+        if (!product.getSeller().getId().equals(currentUser.getId())) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
+        if (product.getStatus() == ProductStatus.sold) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+        if (orderRepository.existsByProductIdAndStatusIn(product.getId(), ACTIVE_TRANSACTION_STATUSES)) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
         }
     }
 
@@ -353,5 +557,9 @@ public class ProductService {
                 && product.getStatus() != ProductStatus.sold
                 && product.getStatus() != ProductStatus.hidden
                 && product.getStatus() != ProductStatus.pending;
+    }
+
+    private boolean hasActiveTransaction(UUID productId) {
+        return orderRepository.existsByProductIdAndStatusIn(productId, ACTIVE_TRANSACTION_STATUSES);
     }
 }

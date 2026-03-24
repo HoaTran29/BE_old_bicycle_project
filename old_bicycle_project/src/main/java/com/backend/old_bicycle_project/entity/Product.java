@@ -64,6 +64,10 @@ public class Product {
     @JoinColumn(name = "frame_material_id", nullable = false)
     private FrameMaterial frameMaterial;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "groupset_id")
+    private Groupset groupsetReference;
+
     @Column(nullable = false)
     private String title;
 

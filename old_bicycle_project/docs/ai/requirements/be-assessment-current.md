@@ -1,47 +1,27 @@
 # Backend Assessment - Current State
 
-Date: 2026-03-14  
+Date: 2026-03-24  
 Scope: `BE_old_bicycle_project/old_bicycle_project` backend compared against `../SRS-Old-Bicycles-Marketplace (1).md`
 
 ## Executive Summary
 
-The old backend assessment is no longer a reliable baseline. The current repository is broader than the old report suggested, and the backend has now been validated not only at service-test level but also against the real Supabase-backed runtime: schema sync, storage-backed product creation, storage cleanup on update/delete, and both mock and non-mock product-to-order-to-payment smoke paths now pass. The transaction layer has moved one step further again: non-mock SePay integration hooks now exist, the MBBank case now falls back cleanly to direct-transfer QR while still using real webhook confirmation, report processing now records admin audit data, and regression coverage is better around auth/chat/report flows. The system is still behind the SRS in several must-have areas, but the backend is no longer missing a usable transaction path.
+Backend hiện đã vượt khá xa giai đoạn “có entity và controller nhưng chưa thành flow”. Các trục nghiệp vụ chính đã có đường đi thực tế qua database và runtime local/Supabase:
 
-### **Fixed backend progress assessment: 69%**
+- auth với verify email, reset password, refresh token, chặn account unactive/banned
+- listing -> admin moderation -> mandatory inspection -> public visibility
+- order -> upfront payment -> webhook confirmation -> refund/payout manual có audit
+- chat realtime với STOMP + unread handling
+- buyer review + seller reply
+- order evidence cho seller handover / buyer receipt
+- groupset master data + size chart theo category
 
-This number reflects SRS-aligned backend readiness, not just file count or module breadth.
+Điểm backend vẫn chưa lên mức “full SRS” là phần payment chiều sâu, chatbot, logistics, payout automation, video/media depth, và thêm một vòng stabilization cho timeout/expiry.
 
-### MVP scope note
+### Current backend readiness: **79%**
 
-- Product video upload, video filtering, and video playback remain part of the full SRS scope.
-- The current delivery plan now explicitly defers video/media depth out of MVP so the team can focus on payment readiness, regression coverage, and admin/report workflow depth.
+Con số này là ước lượng readiness theo SRS và business flow hiện tại, không phải chỉ dựa vào số file hay số module.
 
-### Why the score is not lower
-
-- The backend already has real modules for auth, products, chat, inspection, review, report, notification, dashboard, and reference data.
-- Flyway, Spring Security, Swagger, WebSocket chat, and a global exception handler are already present.
-- The repo has moved beyond the old report's "early skeleton" stage.
-
-### Why the score is not higher
-
-- Several implemented modules are still only `Partial` because business rules, payment flow depth, or admin workflow depth are missing.
-- The payment flow now supports a real SePay API path in non-mock mode, but it is still phase-1: no remaining-payment phase, no payout automation, and no automated refund execution.
-- Delivery confidence is better because `V1-V8` has now been reconciled on the active Supabase environment, but repeatability across environments still depends on proper Flyway application in each runtime.
-- Test coverage is better than before, but automated integration coverage is still far from full regression protection.
-
-## Repository Snapshot
-
-- 14 controllers
-- 20 entities
-- Spring Boot 3.4.3
-- Java 21
-- PostgreSQL + Flyway
-- JWT + refresh token flow
-- Google OAuth2 configuration
-- WebSocket chat infrastructure
-- Swagger UI
-
-## Scoring Method
+## Assessment Method
 
 Weighted feature score:
 
@@ -52,80 +32,93 @@ Weighted feature score:
 - `Partial` = 0.5
 - `Missing` = 0.0
 
-Raw feature score from the SRS matrix below: **66%**
+Estimated raw feature score from the matrix below: **73%**
 
-Readiness adjustment: **+3 points**
+Readiness adjustment: **+6 points**
 
 Reason for adjustment:
 
-- A first payment/refund flow now exists, targeted service tests cover the main service layer, non-mock SePay order creation is now implemented behind real config flags, and the backend has passed real runtime smoke on Supabase for product creation with storage, product image replacement, storage cleanup on delete, order acceptance, payment request creation, and webhook confirmation.
-- The non-mock SePay path has now been verified against a real SePay account and a public ngrok-routed callback: for the current MBBank account, the backend correctly falls back from BIDV-only VA order creation to direct-transfer QR plus real IPN/webhook confirmation.
-- The system still lacks automated end-to-end integration tests and payment depth beyond the phase-1 upfront path.
+- nhiều module đã được smoke-test bằng runtime thật, không còn chỉ là unit/service coverage
+- order, refund, payout, review, inspection, and size-chart/groupset flows đã nối được end-to-end
+- schema và SRS đã được sync lại liên tục theo từng tranche lớn
 
-Final assessed backend progress: **69%**
+Final assessed backend progress: **79%**
+
+## Repository Snapshot
+
+- Spring Boot 3.4.3
+- Java 21
+- PostgreSQL + Flyway
+- JWT + refresh token
+- WebSocket chat
+- Supabase PostgreSQL + Storage
+- SePay inbound payment integration
 
 ## SRS Matrix
 
 | SRS ID | Module | Priority | Status | Current BE | What blocks `Done` |
 | --- | --- | --- | --- | --- | --- |
-| `F-001` | User Authentication | Must | `Done` | Register, login, refresh, logout, email verification, forgot/reset password, `/me`, profile update, and change-password flows now exist. JWT and refresh-token flow are present, and password policy now enforces min 8 chars + uppercase + number. | Base must-have authentication scope is covered. |
-| `F-002` | Bike Listing | Must | `Partial` | Product create now enforces required technical fields and minimum image count, sets `expiresAt`, uses seller-scoped listing queries, applies soft delete, uploads real images to Supabase Storage, and now cleans old images on update/delete. | Moderation flow and stricter transaction-aware edit restrictions remain incomplete. Video/media depth is intentionally deferred from MVP but still missing against the full SRS. |
-| `F-003` | Search & Filter | Must | `Done` | Public search endpoint with pagination and core filter fields is already usable. | Basic search/filter is covered. Remaining gaps belong to `F-004`, not this base feature. |
-| `F-004` | Advanced Filter | Must | `Partial` | Technical filters now cover brand, category, brake, frame material, condition, price, province, frame size, wheel size, groupset, and verified status. | The MVP no longer plans `hasVideo` filtering, but that field is still absent compared against the full SRS. |
-| `F-005` | Bike Detail View | Must | `Partial` | Product detail now returns listing data with images, real verified badge state, and a public inspection summary/report block when inspection data exists. | Seller trust depth and some remaining SRS detail fields are still incomplete. Video playback/media expansion is deferred from MVP but not delivered in the full SRS sense. |
-| `F-006` | Messaging System | Must | `Partial` | Conversations, messages, REST endpoints, and WebSocket push are implemented. REST read/list flows derive user identity from Spring Security, the invalid latest-message JPQL was removed, STOMP `CONNECT/SEND/SUBSCRIBE` frames are protected by a JWT-based inbound channel interceptor, and controller/service regression tests now cover message routing and unread-marking guard rails. | Real-time integration coverage is still missing, and the chat module still needs broader regression tests for delivery persistence and unread-state behavior end-to-end. |
-| `F-007` | Wishlist | Should | `Partial` | Authenticated wishlist add, remove, and list endpoints now exist with repository/service/controller flow. Focused service tests now cover ownership guard, mapping, and delete behavior. | Richer product-state and notification behavior from the SRS is still thin. |
-| `F-008` | Deposit & Order | Must | `Partial` | Buyers can create orders with `partial/full` upfront intent, sellers can accept them, and authorized completion/cancellation paths now respect fund-hold states. Product status is updated to `sold` on completion. | Remaining payment phase, escrow-grade release policy, richer dispute handling, and integration-level tests are still missing. |
-| `F-009` | Seller Rating | Must | `Partial` | Review endpoints and service exist. User aggregate rating fields are present, and review submission is now tied to the authenticated user with a real order lifecycle behind it. | The broader order/payment flow is still incomplete, and there is no automated coverage for review eligibility. |
-| `F-010` | Inspection System | Should | `Partial` | Inspection request, evaluation, and fetch flows exist. Re-request now resets the existing inspection record, validity remains 7 days, and product verified state is derived from valid passed inspections. | The inspection/report model still shares too much state with product status, and deeper dispute/report workflow remains thin. |
-| `F-011` | Admin Dashboard | Must | `Partial` | Dashboard stats endpoint exists. Brand/category admin operations already started, and report processing now records which admin handled a case plus when it was processed. | User management, listing moderation, dispute resolution breadth, and richer admin analytics are still missing. |
-| `F-012` | Report System | Must | `Partial` | Report submission, reporter-side listing, admin listing with filter hooks, and process endpoints exist. Report processing now stores admin note, processor, processed time, and can notify the reporter/affected side after sanctions. Duplicate open reports from the same reporter to the same target are now blocked. | Moderation depth is better, but richer sanctions workflow, appeal/dispute loops, and integration tests are still missing. |
-| `F-013` | Notification System | Must | `Partial` | Notification center endpoints and service are implemented. User-facing endpoints now use the authenticated user, single-notification read verifies ownership, and focused service tests now cover push/send, ownership rejection, and unread counting. | Event coverage is still limited and there are still no integration-level tests. |
-| `F-014` | Chatbot Support | Could | `Missing` | No backend module. | Entire feature is absent. |
-| `F-015` | Logistics Integration | Could | `Missing` | No backend module. | Entire feature is absent. |
-| `F-016` | Online Payment | Could | `Partial` | A usable phase-1 flow now exists: create payment request, generate transfer instructions and QR, receive SePay-style webhook confirmation, persist payment records, and support refund request/admin review. Non-mock SePay order creation is now implemented via configurable API integration, webhook validation accepts both secret-header and legacy API-key style callbacks, and the current MBBank environment has now been live-verified through ngrok-routed IPN using the direct-transfer fallback path. | Remaining-payment phase, payout/release automation, full refund automation, and richer bank/gateway-specific payment depth are still missing. |
+| `F-001` | User Authentication | Must | `Done` | Register, login, refresh, logout, email verification, forgot/reset password, `/me`, profile update, change password, Google OAuth config, inactive/banned guard, and clearer auth error mapping đều đã có. | Core auth scope đã usable. |
+| `F-002` | Bike Listing | Must | `Partial` | Product create/update/delete/hide/show/relist đã đi qua storage thật, required technical fields đã được siết, groupset và frame specs đã được chuẩn hóa tốt hơn. | Video/media depth vẫn chưa có theo full SRS. |
+| `F-003` | Search & Filter | Must | `Done` | Public search với pagination và filter cơ bản đã usable. | Scope cốt lõi đã đủ. |
+| `F-004` | Advanced Filter | Must | `Partial` | Đã có filter theo brand, category, brake, frame material, province, frame size, wheel size, groupset, verified. | `hasVideo` và một vài chiều sâu filter theo media chưa có. |
+| `F-005` | Bike Detail View | Must | `Partial` | Product detail đã có inspection summary/report, seller review aggregate, groupset chuẩn hóa, và `categoryId` để FE render size guidance. | Video/media depth và một số trust detail nâng cao chưa đủ full SRS. |
+| `F-006` | Messaging System | Must | `Done` | REST conversation/message, unread handling, STOMP auth, subscribe/send guard, ownership enforcement đã có. | Có thể tăng integration coverage, nhưng core flow đã usable. |
+| `F-007` | Wishlist | Should | `Done` | Add/remove/list wishlist đã hoàn chỉnh ở service + API. | Scope hiện tại đã đủ. |
+| `F-008` | Deposit & Order | Must | `Partial` | Order create/accept/payment request/confirm deposit/complete/confirm-received/refund request/manual payout đều đã có. Evidence upload cũng đã nối vào order flow. | Chưa có timeout/expiry/auto-cancel, late-payment handling, remaining-payment phase, ledger sâu hơn. |
+| `F-009` | Seller Rating | Must | `Done` | Buyer chỉ review sau order hợp lệ, seller reply một lần cho review, aggregate rating đã có. | Core review/reply scope đã usable. |
+| `F-010` | Inspection System | Must | `Done` | Mandatory inspection before public đã chạy thật: admin send-to-inspection, inspector evaluate, report upload, validity window, seller notification, public visibility guard. | Có thể mở rộng assignment/appeal sau, nhưng core SRS hiện tại đã usable. |
+| `F-011` | Admin Dashboard | Must | `Partial` | Admin đã có user management, product moderation, refund/dispute review, reference-data CRUD, groupset CRUD, size chart CRUD, report processing audit. | Analytics depth và vài admin workflows nâng cao vẫn còn mỏng. |
+| `F-012` | Report System | Must | `Partial` | Report submit/list/process đã có, có duplicate guard và admin audit fields. | Appeal/escalation/richer sanctions workflow chưa đủ rộng. |
+| `F-013` | Notification System | Must | `Done` | Notification center API, unread count, mark read, mark all read, event publish cho các flow chính đã usable. | Core scope đủ. |
+| `F-014` | Chatbot Support | Could | `Missing` | Chưa có backend assistant module. | Toàn bộ feature còn thiếu. |
+| `F-015` | Logistics Integration | Could | `Missing` | Chưa có logistics module. | Toàn bộ feature còn thiếu. |
+| `F-016` | Online Payment | Could | `Partial` | Phase-1 payment đã usable: payment request, QR/instructions, SePay webhook, refund request, manual payout, payout profile, TPBank/static fallback, order evidence cho dispute context. | Chưa có payout automation, timeout/expiry flow, late-payment policy, full VA-first path. |
 
-## Readiness Gaps By Layer
+## Readiness By Layer
 
 | Layer | Status | Assessment |
 | --- | --- | --- |
-| Database schema and migrations | `Partial` | Runtime enum naming now matches lowercase PostgreSQL enum values, `V1-V8` has been reconciled on the active Supabase environment, and backend startup now validates against the real schema. Remaining risk is future environment drift, not the current primary environment. |
-| Authorization and ownership | `Partial` | Notification, inspection, review, report, REST chat, and STOMP chat flows now derive identity from authenticated context instead of caller-supplied IDs. A few deeper business edges still need hardening. |
-| Business-rule enforcement | `Partial` | Transaction rules remain stronger, and `BR01-BR07` is materially improved: required technical fields, minimum images, listing expiry, soft delete, verified derivation, and inspection invalidation now exist in backend logic. Remaining MVP gaps are richer moderation/admin flow and deeper order/admin rules. Video support is now a deliberate post-MVP item, though still a gap versus the full SRS. |
-| Automated testing | `Partial` | The suite now includes focused service tests for `OrderServiceImpl`, `PaymentServiceImpl`, `RefundServiceImpl`, `AuthService`, `WishlistServiceImpl`, `NotificationServiceImpl`, `MessageServiceImpl`, and `ReportServiceImpl`, plus controller-level tests for `AuthController` and `ChatController`, in addition to the context-load test. Real smoke testing has improved confidence further, but automated integration coverage is still thin. |
-| API and DX foundations | `Partial` | Swagger, API wrapper, and exception handling exist, but the API surface is still inconsistent in a few newer modules. |
+| Database schema and migrations | `Partial` | Migrations đang khá kỷ luật và bám feature slices tốt hơn nhiều; tuy vậy schema payment vẫn chưa có lớp timeout/expiry mới. |
+| Authorization and ownership | `Partial` | Ownership ở auth/chat/review/notification/report/order khá tốt. Vẫn cần rà tiếp edge cases khi thêm chatbot và payment expiry. |
+| Business-rule enforcement | `Partial` | Listing moderation, inspection bắt buộc, payout/refund manual, review/reply, evidence flow đã được siết rõ. Gaps lớn còn lại là payment timeout và deeper transaction policy. |
+| Automated testing | `Partial` | Service/controller tests đã phủ được nhiều hơn trước và có smoke runtime cho nhiều flow. Nhưng chưa có integration suite thật sự rộng cho toàn bộ payment/chat/order matrix. |
+| API and DX foundations | `Partial` | API surface dùng được và có Swagger/global error handling. Cần thêm một đợt consistency polish cho payment/assistant sắp tới. |
 
 ## Main Findings
 
-1. The old report understated the repository breadth. The backend is not a tiny skeleton anymore.
-2. The old report also understated the amount of unfinished work that still blocks SRS-ready delivery.
-3. The transaction layer has improved materially: `Order`, `Payment`, and `Refund` now form a usable phase-1 business flow instead of isolated entities.
-4. The schema drift problem is materially better: the active Supabase environment is now reconciled through `V8`, and runtime startup has been verified against it.
-5. Storage-backed product flows are stronger now that create, update-image replacement, and delete cleanup have all been smoke-tested against Supabase Storage.
-6. Report/admin depth is better now that report processing stores admin audit data and blocks duplicate open reports from the same reporter to the same target.
-7. The largest remaining MVP quality gaps are still automated integration coverage, broader admin moderation depth, and richer payment depth beyond the initial SePay live path.
-8. Video/media support remains a full-SRS gap, but it is no longer a near-term MVP milestone.
+1. Backend hiện đã có đủ lõi nghiệp vụ để demo một marketplace cũ có moderation, inspection, payment, dispute, review, và payout manual.
+2. Mandatory inspection before public là thay đổi lớn nhất về trust layer và hiện đã đi qua runtime thật.
+3. Payment không còn là “mock-only”; hệ thống đã có inbound webhook, manual payout/refund audit, nhưng vẫn chưa có timeout/expiry và không nên xem là full financial engine.
+4. Review/reply và order evidence đã đóng được nhiều khoảng trống trong dispute/audit flow.
+5. Groupset và size chart đã đưa technical master-data đi đúng hướng, giảm text tự do trong listing/filter/detail.
+6. Khoảng trống lớn nhất còn lại cho backend hiện không phải breadth của module nữa mà là chiều sâu của transaction state machine và quality/stabilization.
 
 ## Recommended Next Milestones
 
-### Milestone 1 - Reach 70%
+### Milestone 1 - Stabilization
 
-- Add broader regression tests for wishlist, notifications, and repository/integration coverage for chat unread-state and search filtering.
-- Decide whether to keep the current direct-transfer fallback as the primary payment path for non-BIDV banks or extend the SePay integration for more bank-specific live order flows.
-- Finish the remaining Product/Inspection gaps that still belong to MVP: repository/integration coverage for search filtering and any admin moderation rules still tied to listing state transitions.
+- Cập nhật assessment và rà lại quality gaps còn sót.
+- Dọn mojibake/copy inconsistency ở các file legacy còn dính.
+- Chạy smoke end-to-end cuối cho listing, inspection, payment, refund/payout, review, evidence, groupset, size chart.
 
-### Milestone 2 - Reach 74%
+### Milestone 2 - Payment Timeout / Expiry
 
-- Add remaining-payment and payout-release rules if the product direction still wants staged payments.
-- Expand admin moderation, report appeal/dispute handling, and richer sanctions workflows.
+- Thêm `PaymentStatus.expired`
+- Thêm `payments.expires_at`, `orders.cancel_reason`, `orders.cancelled_at`
+- Thêm scheduler auto-cancel order quá hạn thanh toán
+- Thêm late-payment handling thay vì tự revive order
 
-### Milestone 3 - Reach 78%+
+### Milestone 3 - Chatbot Level 2
 
-- Expand admin moderation and dispute resolution coverage.
-- Introduce repeatable integration testing and CI verification.
+- Spring Boot gọi Vercel AI Gateway qua server-side HTTP
+- `POST /api/assistant/chat`
+- context-aware answers dựa trên listing/order/inspection/refund/payout của user
 
-## Deferred From MVP
+## Deferred From Current MVP
 
-- Product video upload/storage
-- `hasVideo` filtering
-- Video playback/detail-media expansion
+- Video upload/playback/filtering depth
+- Logistics integration
+- Payout automation thật
+- VA-first payment path toàn diện
+- Chatbot beyond level 2

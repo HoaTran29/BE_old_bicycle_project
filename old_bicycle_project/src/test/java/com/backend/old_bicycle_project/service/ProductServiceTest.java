@@ -5,6 +5,7 @@ import com.backend.old_bicycle_project.dto.product.ProductResponse;
 import com.backend.old_bicycle_project.dto.product.ProductUpdateRequest;
 import com.backend.old_bicycle_project.entity.BrakeType;
 import com.backend.old_bicycle_project.entity.FrameMaterial;
+import com.backend.old_bicycle_project.entity.Groupset;
 import com.backend.old_bicycle_project.entity.Inspection;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.ProductImage;
@@ -17,7 +18,9 @@ import com.backend.old_bicycle_project.repository.BrandRepository;
 import com.backend.old_bicycle_project.repository.BrakeTypeRepository;
 import com.backend.old_bicycle_project.repository.CategoryRepository;
 import com.backend.old_bicycle_project.repository.FrameMaterialRepository;
+import com.backend.old_bicycle_project.repository.GroupsetRepository;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
+import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import org.junit.jupiter.api.Test;
@@ -38,6 +41,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -56,6 +60,9 @@ class ProductServiceTest {
     private ProductImageRepository productImageRepository;
 
     @Mock
+    private OrderRepository orderRepository;
+
+    @Mock
     private BrandRepository brandRepository;
 
     @Mock
@@ -66,6 +73,9 @@ class ProductServiceTest {
 
     @Mock
     private FrameMaterialRepository frameMaterialRepository;
+
+    @Mock
+    private GroupsetRepository groupsetRepository;
 
     @Mock
     private InspectionRepository inspectionRepository;
@@ -125,7 +135,54 @@ class ProductServiceTest {
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
         assertThat(response.getExpiresAt()).isEqualTo(LocalDateTime.of(2026, 4, 12, 10, 0));
         assertThat(response.getImages()).hasSize(3);
+        assertThat(response.getCategoryId()).isNull();
         verify(productImageRepository).saveAll(anyList());
+    }
+
+    @Test
+    void createMapsGroupsetReferenceWhenGroupsetIdIsProvided() {
+        ProductCreateRequest request = validCreateRequest();
+        User seller = seller();
+        UUID groupsetId = UUID.randomUUID();
+        request.setGroupsetId(groupsetId);
+
+        Groupset groupset = Groupset.builder()
+                .id(groupsetId)
+                .name("Shimano 105")
+                .build();
+
+        when(brakeTypeRepository.findById(request.getBrakeTypeId())).thenReturn(Optional.of(BrakeType.builder()
+                .id(request.getBrakeTypeId())
+                .name("Disc")
+                .build()));
+        when(frameMaterialRepository.findById(request.getFrameMaterialId())).thenReturn(Optional.of(FrameMaterial.builder()
+                .id(request.getFrameMaterialId())
+                .name("Aluminum")
+                .build()));
+        when(groupsetRepository.findById(groupsetId)).thenReturn(Optional.of(groupset));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+            Product product = invocation.getArgument(0);
+            if (product.getId() == null) {
+                product.setId(UUID.randomUUID());
+            }
+            if (product.getCreatedAt() == null) {
+                product.setCreatedAt(LocalDateTime.of(2026, 3, 13, 10, 0));
+            }
+            return product;
+        });
+        when(storageService.uploadFile(any(), anyString()))
+                .thenReturn("https://cdn.test/bike-1.jpg", "https://cdn.test/bike-2.jpg", "https://cdn.test/bike-3.jpg");
+        when(productImageRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(inspectionRepository.findByProductId(any(UUID.class))).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.create(
+                request,
+                List.of(image("bike-1.jpg"), image("bike-2.jpg"), image("bike-3.jpg")),
+                seller
+        );
+
+        assertThat(response.getGroupsetId()).isEqualTo(groupsetId);
+        assertThat(response.getGroupset()).isEqualTo("Shimano 105");
     }
 
     @Test
@@ -135,12 +192,115 @@ class ProductServiceTest {
 
         when(productRepository.findBySellerIdAndDeletedAtIsNull(eq(seller.getId()), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new PageImpl<>(List.of(product)));
-        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+        when(inspectionRepository.findByProductIdIn(anyCollection())).thenReturn(List.of());
+        when(productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(anyCollection())).thenReturn(List.of());
+        when(orderRepository.findLockedProductIdsByProductIdsAndStatuses(anyCollection(), anyCollection())).thenReturn(List.of());
 
         var page = productService.getMyProducts(seller, 0, 12);
 
         assertThat(page.getContent()).hasSize(1);
         assertThat(page.getContent().getFirst().getId()).isEqualTo(product.getId());
+    }
+
+    @Test
+    void getAdminByIdReturnsPendingProductForModeratorReview() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.pending);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.getAdminById(product.getId());
+
+        assertThat(response.getId()).isEqualTo(product.getId());
+        assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
+        assertThat(response.getCategoryId()).isNull();
+    }
+
+    @Test
+    void getByIdRejectsActiveProductWithoutValidInspection() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> productService.getById(product.getId()))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.PRODUCT_NOT_FOUND);
+    }
+
+    @Test
+    void getMineByIdReturnsOwnedPendingProductForSellerEditFlow() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.pending);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.getMineById(product.getId(), seller);
+
+        assertThat(response.getId()).isEqualTo(product.getId());
+        assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
+    }
+
+    @Test
+    void hideMovesOwnedProductToHiddenWithoutSoftDeleting() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        ProductResponse response = productService.hide(product.getId(), seller);
+
+        assertThat(response.getStatus()).isEqualTo(ProductStatus.hidden);
+        assertThat(product.getDeletedAt()).isNull();
+        verify(productRepository).save(product);
+    }
+
+    @Test
+    void showMovesHiddenProductBackToPendingAndRenewsExpiry() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.hidden);
+        LocalDateTime previousExpiry = LocalDateTime.now().minusDays(1);
+        product.setExpiresAt(previousExpiry);
+        Inspection inspection = Inspection.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .passed(true)
+                .validUntil(LocalDateTime.now().plusDays(5))
+                .build();
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.of(inspection));
+        when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProductResponse response = productService.show(product.getId(), seller);
+
+        assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
+        assertThat(product.getExpiresAt()).isAfter(previousExpiry);
+        assertThat(inspection.getPassed()).isFalse();
+        assertThat(inspection.getValidUntil()).isNotNull();
+        verify(productRepository).save(product);
+    }
+
+    @Test
+    void showRejectsProductThatIsNotHidden() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> productService.show(product.getId(), seller))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATUS);
+
+        verify(productRepository, never()).save(any(Product.class));
     }
 
     @Test
@@ -206,6 +366,26 @@ class ProductServiceTest {
     }
 
     @Test
+    void getByIdMarksProductAsLockedWhenThereIsAnActiveTransaction() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+        Inspection inspection = Inspection.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .passed(true)
+                .validUntil(LocalDateTime.now().plusDays(2))
+                .build();
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.of(inspection));
+        when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), anyList())).thenReturn(true);
+
+        ProductResponse response = productService.getById(product.getId());
+
+        assertThat(response.isLockedForTransaction()).isTrue();
+    }
+
+    @Test
     void updateResetsStatusAndInvalidatesExistingInspection() {
         User seller = seller();
         Product product = product(seller, ProductStatus.inspected_passed);
@@ -229,6 +409,57 @@ class ProductServiceTest {
         assertThat(response.getStatus()).isEqualTo(ProductStatus.pending);
         assertThat(inspection.getPassed()).isFalse();
         assertThat(inspection.getValidUntil()).isNotNull();
+    }
+
+    @Test
+    void changeStatusRejectsDirectActivationWithoutValidInspection() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.pending);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> productService.changeStatus(product.getId(), ProductStatus.active))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATUS);
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    void updateRejectsWhenProductHasActiveTransaction() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+        ProductUpdateRequest request = new ProductUpdateRequest();
+        request.setTitle("Khong duoc sua khi dang co giao dich");
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), anyList())).thenReturn(true);
+
+        assertThatThrownBy(() -> productService.update(product.getId(), request, null, seller))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATUS);
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    void deleteRejectsWhenProductHasActiveTransaction() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+
+        when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
+        when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), anyList())).thenReturn(true);
+
+        assertThatThrownBy(() -> productService.delete(product.getId(), seller))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATUS);
+
+        verify(productRepository, never()).save(any(Product.class));
+        verify(storageService, never()).deleteFile(anyString());
     }
 
     @Test

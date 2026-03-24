@@ -29,4 +29,5 @@ public class InspectionResponseDTO {
     private String reportFileUrl;
     private LocalDateTime validUntil;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

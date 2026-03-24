@@ -38,6 +38,8 @@ public class ProductCreateRequest {
     @NotBlank(message = "Vui lòng nhập kích thước bánh")
     private String wheelSize;
 
+    private UUID groupsetId;
+
     private String groupset;
 
     private ConditionType condition;
