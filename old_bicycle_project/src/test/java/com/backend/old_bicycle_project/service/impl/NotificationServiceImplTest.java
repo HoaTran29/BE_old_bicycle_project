@@ -17,8 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,13 +44,14 @@ class NotificationServiceImplTest {
     private NotificationServiceImpl notificationService;
 
     @Test
-    void sendNotificationPersistsAndPushesToUserQueue() {
+    void sendNotificationPersistsUtcTimestampAndPushesToUserQueue() {
         User user = user("buyer@test.dev");
+        UUID notificationId = UUID.randomUUID();
+
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
         when(notificationRepository.save(any(Notification.class))).thenAnswer(invocation -> {
             Notification notification = invocation.getArgument(0);
-            notification.setId(UUID.randomUUID());
-            notification.setCreatedAt(LocalDateTime.of(2026, 3, 13, 10, 15));
+            notification.setId(notificationId);
             return notification;
         });
 
@@ -63,6 +63,9 @@ class NotificationServiceImplTest {
                 "{\"orderId\":\"abc\"}"
         );
 
+        ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(notificationCaptor.capture());
+
         ArgumentCaptor<NotificationResponseDTO> responseCaptor = ArgumentCaptor.forClass(NotificationResponseDTO.class);
         verify(messagingTemplate).convertAndSendToUser(
                 eq(user.getId().toString()),
@@ -70,15 +73,17 @@ class NotificationServiceImplTest {
                 responseCaptor.capture()
         );
 
+        Notification persistedNotification = notificationCaptor.getValue();
         NotificationResponseDTO response = responseCaptor.getValue();
+
+        assertThat(persistedNotification.getCreatedAt()).isNotNull();
+        assertThat(response.getId()).isEqualTo(notificationId);
         assertThat(response.getUserId()).isEqualTo(user.getId());
         assertThat(response.getTitle()).isEqualTo("Cập nhật order");
         assertThat(response.getType()).isEqualTo(NotificationType.order);
         assertThat(response.getIsRead()).isFalse();
         assertThat(response.getCreatedAt()).isEqualTo(
-                LocalDateTime.of(2026, 3, 13, 10, 15)
-                        .atZone(ZoneId.systemDefault())
-                        .toOffsetDateTime()
+                persistedNotification.getCreatedAt().atOffset(ZoneOffset.UTC)
         );
     }
 

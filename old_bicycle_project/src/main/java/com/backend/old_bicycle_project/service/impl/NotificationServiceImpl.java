@@ -17,12 +17,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {
-    private static final ZoneId SERVER_ZONE_ID = ZoneId.systemDefault();
+    private static final ZoneId NOTIFICATION_STORAGE_ZONE_ID = ZoneOffset.UTC;
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
@@ -41,6 +42,7 @@ public class NotificationServiceImpl implements NotificationService {
                 .type(type)
                 .isRead(false)
                 .metadata(metadata)
+                .createdAt(java.time.LocalDateTime.now(ZoneOffset.UTC))
                 .build();
 
         notification = notificationRepository.save(notification);
@@ -101,7 +103,7 @@ public class NotificationServiceImpl implements NotificationService {
                 .isRead(notification.getIsRead())
                 .metadata(notification.getMetadata())
                 .createdAt(notification.getCreatedAt() != null
-                        ? notification.getCreatedAt().atZone(SERVER_ZONE_ID).toOffsetDateTime()
+                        ? notification.getCreatedAt().atZone(NOTIFICATION_STORAGE_ZONE_ID).toOffsetDateTime()
                         : null)
                 .build();
     }

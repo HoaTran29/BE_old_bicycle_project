@@ -5,10 +5,10 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.JdbcType;
-import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Entity
@@ -46,7 +46,14 @@ public class Notification {
     @ColumnTransformer(read = "metadata::text", write = "?::jsonb")
     private String metadata;
 
-    @CreationTimestamp
+    @Builder.Default
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private LocalDateTime createdAt = LocalDateTime.now(ZoneOffset.UTC);
+
+    @PrePersist
+    void ensureCreatedAt() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now(ZoneOffset.UTC);
+        }
+    }
 }
