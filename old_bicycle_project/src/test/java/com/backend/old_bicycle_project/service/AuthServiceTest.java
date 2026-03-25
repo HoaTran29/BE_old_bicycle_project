@@ -4,6 +4,7 @@ import com.backend.old_bicycle_project.dto.auth.ChangePasswordRequest;
 import com.backend.old_bicycle_project.dto.auth.ForgotPasswordRequest;
 import com.backend.old_bicycle_project.dto.auth.ProfileUpdateRequest;
 import com.backend.old_bicycle_project.dto.auth.RegisterRequest;
+import com.backend.old_bicycle_project.dto.auth.ResendVerificationRequest;
 import com.backend.old_bicycle_project.dto.auth.ResetPasswordRequest;
 import com.backend.old_bicycle_project.entity.EmailVerification;
 import com.backend.old_bicycle_project.entity.PasswordResetToken;
@@ -39,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -157,6 +159,40 @@ class AuthServiceTest {
 
         verify(emailService).sendPasswordResetEmail(user, "reset-token");
         assertThat(message).contains("Neu email ton tai");
+    }
+
+    @Test
+    void resendVerificationEmailCreatesAndSendsTokenForUnverifiedUser() {
+        User user = user("buyer@test.dev");
+        user.setVerified(false);
+
+        when(userRepository.findByEmail("buyer@test.dev")).thenReturn(Optional.of(user));
+        when(emailService.createVerificationToken(user)).thenReturn(EmailVerification.builder()
+                .token("resend-token")
+                .build());
+
+        ResendVerificationRequest request = new ResendVerificationRequest();
+        request.setEmail("buyer@test.dev");
+
+        String message = authService.resendVerificationEmail(request);
+
+        verify(emailService).sendVerificationEmail(user, "resend-token");
+        assertThat(message).contains("gửi lại email xác thực");
+    }
+
+    @Test
+    void resendVerificationEmailSkipsVerifiedUserAndStillReturnsGenericMessage() {
+        User user = user("buyer@test.dev");
+        when(userRepository.findByEmail("buyer@test.dev")).thenReturn(Optional.of(user));
+
+        ResendVerificationRequest request = new ResendVerificationRequest();
+        request.setEmail("buyer@test.dev");
+
+        String message = authService.resendVerificationEmail(request);
+
+        verify(emailService, never()).createVerificationToken(any(User.class));
+        verify(emailService, never()).sendVerificationEmail(any(User.class), any());
+        assertThat(message).contains("gửi lại email xác thực");
     }
 
     @Test

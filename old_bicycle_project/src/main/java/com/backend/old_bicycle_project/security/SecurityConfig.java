@@ -49,6 +49,7 @@ public class SecurityConfig {
                                                 "/api/auth/login",
                                                 "/api/auth/refresh",
                                                 "/api/auth/forgot-password",
+                                                "/api/auth/resend-verification",
                                                 "/api/auth/reset-password",
                                                 "/api/auth/verify-email",
                                                 "/api/payments/sepay/webhook",

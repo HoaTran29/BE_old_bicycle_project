@@ -7,6 +7,7 @@ import com.backend.old_bicycle_project.dto.auth.LoginRequest;
 import com.backend.old_bicycle_project.dto.auth.ProfileUpdateRequest;
 import com.backend.old_bicycle_project.dto.auth.RefreshTokenRequest;
 import com.backend.old_bicycle_project.dto.auth.RegisterRequest;
+import com.backend.old_bicycle_project.dto.auth.ResendVerificationRequest;
 import com.backend.old_bicycle_project.dto.auth.ResetPasswordRequest;
 import com.backend.old_bicycle_project.entity.EmailVerification;
 import com.backend.old_bicycle_project.entity.PasswordResetToken;
@@ -32,6 +33,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -51,7 +53,9 @@ public class AuthService {
 
     @Transactional
     public String register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
+        String normalizedEmail = normalizeEmail(request.getEmail());
+
+        if (userRepository.existsByEmail(normalizedEmail)) {
             throw new AppException(ErrorCode.USER_EXISTED);
         }
 
@@ -63,7 +67,7 @@ public class AuthService {
         }
 
         User user = User.builder()
-                .email(request.getEmail().trim())
+                .email(normalizedEmail)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .firstName(trimToNull(request.getFirstName()))
                 .lastName(trimToNull(request.getLastName()))
@@ -79,6 +83,20 @@ public class AuthService {
         emailService.sendVerificationEmail(user, verificationToken.getToken());
 
         return "Dang ky thanh cong. Vui long kiem tra email de xac thuc tai khoan.";
+    }
+
+    @Transactional
+    public String resendVerificationEmail(ResendVerificationRequest request) {
+        String normalizedEmail = normalizeEmail(request.getEmail());
+
+        userRepository.findByEmail(normalizedEmail)
+                .filter(user -> !user.isVerified())
+                .ifPresent(user -> {
+                    EmailVerification verificationToken = emailService.createVerificationToken(user);
+                    emailService.sendVerificationEmail(user, verificationToken.getToken());
+                });
+
+        return "Nếu tài khoản tồn tại và chưa được xác thực, hệ thống đã gửi lại email xác thực.";
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -124,7 +142,7 @@ public class AuthService {
     }
 
     public String requestPasswordReset(ForgotPasswordRequest request) {
-        userRepository.findByEmail(request.getEmail().trim())
+        userRepository.findByEmail(normalizeEmail(request.getEmail()))
                 .ifPresent(user -> {
                     PasswordResetToken passwordResetToken = emailService.createPasswordResetToken(user);
                     emailService.sendPasswordResetEmail(user, passwordResetToken.getToken());
@@ -268,5 +286,10 @@ public class AuthService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String normalizeEmail(String email) {
+        String normalizedEmail = trimToNull(email);
+        return normalizedEmail == null ? null : normalizedEmail.toLowerCase(Locale.ROOT);
     }
 }

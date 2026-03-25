@@ -62,7 +62,7 @@ class EmailServiceTest {
         assertThat(captor.getValue().getSubject()).isEqualTo("Xác thực tài khoản - Old Bicycles Marketplace");
         assertThat(html).contains("Xin chào Mai!");
         assertThat(html).contains("Xác thực Email");
-        assertThat(html).contains("https://public.example.com/api/auth/verify-email?token=verify-token");
+        assertThat(html).contains("https://public.example.com/verify-email?token=verify-token");
     }
 
     @Test

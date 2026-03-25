@@ -4,6 +4,7 @@ import com.backend.old_bicycle_project.dto.auth.AuthResponse;
 import com.backend.old_bicycle_project.dto.auth.ChangePasswordRequest;
 import com.backend.old_bicycle_project.dto.auth.ForgotPasswordRequest;
 import com.backend.old_bicycle_project.dto.auth.LoginRequest;
+import com.backend.old_bicycle_project.dto.auth.ResendVerificationRequest;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
@@ -70,6 +71,19 @@ class AuthControllerTest {
 
         assertThat(response.getResult()).isEqualTo("Đã gửi email");
         verify(authService).requestPasswordReset(request);
+    }
+
+    @Test
+    void resendVerificationDelegatesToServiceAndReturnsMessage() {
+        ResendVerificationRequest request = new ResendVerificationRequest();
+        request.setEmail("buyer@test.dev");
+        when(authService.resendVerificationEmail(request))
+                .thenReturn("Nếu tài khoản tồn tại và chưa được xác thực, hệ thống đã gửi lại email xác thực.");
+
+        ApiResponse<String> response = authController.resendVerification(request);
+
+        assertThat(response.getResult()).contains("gửi lại email xác thực");
+        verify(authService).resendVerificationEmail(request);
     }
 
     @Test

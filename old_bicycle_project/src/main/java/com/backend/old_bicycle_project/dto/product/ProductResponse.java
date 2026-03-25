@@ -1,9 +1,12 @@
 package com.backend.old_bicycle_project.dto.product;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.backend.old_bicycle_project.entity.enums.ConditionType;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -36,6 +39,8 @@ public class ProductResponse {
     private String brakeTypeName;
     private String frameMaterialName;
     private List<ImageInfo> images;
+    @Getter(onMethod_ = @JsonProperty("isVerified"))
+    @Setter(onMethod_ = @JsonProperty("isVerified"))
     private boolean isVerified;
     private boolean lockedForTransaction;
     private InspectionInfo inspection;
@@ -55,6 +60,8 @@ public class ProductResponse {
     public static class ImageInfo {
         private UUID id;
         private String url;
+        @Getter(onMethod_ = @JsonProperty("isPrimary"))
+        @Setter(onMethod_ = @JsonProperty("isPrimary"))
         private boolean isPrimary;
         private int displayOrder;
     }

@@ -7,6 +7,7 @@ import com.backend.old_bicycle_project.dto.auth.LoginRequest;
 import com.backend.old_bicycle_project.dto.auth.ProfileUpdateRequest;
 import com.backend.old_bicycle_project.dto.auth.RefreshTokenRequest;
 import com.backend.old_bicycle_project.dto.auth.RegisterRequest;
+import com.backend.old_bicycle_project.dto.auth.ResendVerificationRequest;
 import com.backend.old_bicycle_project.dto.auth.ResetPasswordRequest;
 import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.entity.User;
@@ -53,6 +54,14 @@ public class AuthController {
     public ApiResponse<String> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         return ApiResponse.<String>builder()
                 .result(authService.requestPasswordReset(request))
+                .build();
+    }
+
+    @PostMapping("/resend-verification")
+    @Operation(summary = "Gửi lại email xác thực", security = {})
+    public ApiResponse<String> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+        return ApiResponse.<String>builder()
+                .result(authService.resendVerificationEmail(request))
                 .build();
     }
 

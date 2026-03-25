@@ -16,6 +16,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StreamUtils;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -91,7 +92,7 @@ public class EmailService {
                 "Xác thực tài khoản - Old Bicycles Marketplace",
                 renderTemplate("email-verification.html", Map.of(
                         "displayName", resolveDisplayName(user),
-                        "actionUrl", frontendUrl + "/api/auth/verify-email?token=" + token
+                        "actionUrl", buildFrontendActionUrl("/verify-email", token)
                 ))
         );
     }
@@ -103,7 +104,7 @@ public class EmailService {
                 "Đặt lại mật khẩu - Old Bicycles Marketplace",
                 renderTemplate("password-reset.html", Map.of(
                         "displayName", resolveDisplayName(user),
-                        "actionUrl", frontendUrl + "/reset-password?token=" + token
+                        "actionUrl", buildFrontendActionUrl("/reset-password", token)
                 ))
         );
     }
@@ -129,6 +130,19 @@ public class EmailService {
         return user.getFirstName() != null && !user.getFirstName().isBlank()
                 ? user.getFirstName()
                 : user.getEmail();
+    }
+
+    private String buildFrontendActionUrl(String path, String token) {
+        String normalizedFrontendUrl = frontendUrl == null ? "" : frontendUrl.trim();
+        if (normalizedFrontendUrl.endsWith("/")) {
+            normalizedFrontendUrl = normalizedFrontendUrl.substring(0, normalizedFrontendUrl.length() - 1);
+        }
+
+        return UriComponentsBuilder.fromUriString(normalizedFrontendUrl)
+                .path(path)
+                .queryParam("token", token)
+                .build()
+                .toUriString();
     }
 
     private String renderTemplate(String templateName, Map<String, String> placeholders) {
