@@ -3,6 +3,7 @@ package com.backend.old_bicycle_project.repository;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
+import com.backend.old_bicycle_project.entity.enums.PlatformFeeStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -44,11 +45,37 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.status = :status")
     BigDecimal sumTotalAmountByStatus(@Param("status") OrderStatus status);
 
-    // Grouping by function requires custom mapping in service or interface, 
-    // let's fetch raw objects for simplicity if not using native query
-    @Query(value = "SELECT TO_CHAR(created_at, 'YYYY-MM') as month, SUM(total_amount) as revenue FROM orders WHERE status = 'completed' GROUP BY TO_CHAR(created_at, 'YYYY-MM') ORDER BY month ASC", nativeQuery = true)
-    List<Object[]> getMonthlyRevenue();
+    @Query("SELECT SUM(o.platformFeeTotal) FROM Order o WHERE o.platformFeeStatus = :status")
+    BigDecimal sumPlatformFeeTotalByPlatformFeeStatus(@Param("status") PlatformFeeStatus status);
 
-    @Query(value = "SELECT TO_CHAR(created_at, 'YYYY-MM') as month, COUNT(id) as order_count FROM orders WHERE status = 'completed' GROUP BY TO_CHAR(created_at, 'YYYY-MM') ORDER BY month ASC", nativeQuery = true)
-    List<Object[]> getMonthlyOrderCount();
+    @Query(value = """
+            SELECT TO_CHAR(COALESCE(platform_fee_recognized_at, updated_at, created_at), 'YYYY-MM') AS month,
+                   SUM(total_amount) AS gmv
+            FROM orders
+            WHERE status = 'completed'
+            GROUP BY TO_CHAR(COALESCE(platform_fee_recognized_at, updated_at, created_at), 'YYYY-MM')
+            ORDER BY month ASC
+            """, nativeQuery = true)
+    List<Object[]> getMonthlyCompletedGmv();
+
+    @Query(value = """
+            SELECT TO_CHAR(platform_fee_recognized_at, 'YYYY-MM') AS month,
+                   SUM(platform_fee_total) AS recognized_platform_revenue
+            FROM orders
+            WHERE platform_fee_status = 'recognized'
+              AND platform_fee_recognized_at IS NOT NULL
+            GROUP BY TO_CHAR(platform_fee_recognized_at, 'YYYY-MM')
+            ORDER BY month ASC
+            """, nativeQuery = true)
+    List<Object[]> getMonthlyRecognizedPlatformRevenue();
+
+    @Query(value = """
+            SELECT TO_CHAR(COALESCE(platform_fee_recognized_at, updated_at, created_at), 'YYYY-MM') AS month,
+                   COUNT(id) AS order_count
+            FROM orders
+            WHERE status = 'completed'
+            GROUP BY TO_CHAR(COALESCE(platform_fee_recognized_at, updated_at, created_at), 'YYYY-MM')
+            ORDER BY month ASC
+            """, nativeQuery = true)
+    List<Object[]> getMonthlyCompletedOrderCount();
 }

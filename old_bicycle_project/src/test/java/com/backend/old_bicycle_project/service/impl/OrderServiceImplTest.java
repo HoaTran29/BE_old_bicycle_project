@@ -24,6 +24,7 @@ import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.ReviewRepository;
 import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.PayoutService;
+import com.backend.old_bicycle_project.service.PlatformFeeService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -67,6 +68,9 @@ class OrderServiceImplTest {
     @Mock
     private OrderEvidenceService orderEvidenceService;
 
+    @Mock
+    private PlatformFeeService platformFeeService;
+
     @InjectMocks
     private OrderServiceImpl orderService;
 
@@ -92,6 +96,21 @@ class OrderServiceImplTest {
         when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), any(List.class))).thenReturn(false);
         when(reviewRepository.existsByOrderId(any(UUID.class))).thenReturn(false);
         when(orderEvidenceService.getEvidenceByOrderId(any(UUID.class))).thenReturn(java.util.Collections.emptyMap());
+        when(platformFeeService.calculate(
+                product.getPrice(),
+                product.getPrice(),
+                PaymentMethod.transfer
+        )).thenReturn(new PlatformFeeService.PlatformFeeQuote(
+                product.getPrice(),
+                new BigDecimal("0.0200"),
+                new BigDecimal("240000"),
+                new BigDecimal("120000"),
+                new BigDecimal("120000"),
+                new BigDecimal("12120000"),
+                product.getPrice(),
+                new BigDecimal("11880000"),
+                com.backend.old_bicycle_project.entity.enums.PlatformFeeStatus.pending
+        ));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
             Order order = invocation.getArgument(0);
             order.setId(UUID.randomUUID());
@@ -252,8 +271,8 @@ class OrderServiceImplTest {
 
         assertThat(response.getStatus()).isEqualTo(OrderStatus.completed);
         assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.seller_payout_pending);
-        assertThat(response.getPaidAmount()).isEqualByComparingTo("18000000");
-        assertThat(response.getRemainingAmount()).isEqualByComparingTo("0");
+        assertThat(response.getPaidAmount()).isEqualByComparingTo("4000000");
+        assertThat(response.getRemainingAmount()).isEqualByComparingTo("14000000");
         assertThat(product.getStatus()).isEqualTo(ProductStatus.sold);
         assertThat(response.getSellerHandoverEvidence()).isEqualTo(sellerEvidence);
         assertThat(response.getBuyerReceiptEvidence()).isEqualTo(buyerEvidence);

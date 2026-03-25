@@ -5,11 +5,13 @@ import com.backend.old_bicycle_project.config.SepayProperties;
 import com.backend.old_bicycle_project.dto.request.SepayWebhookRequestDTO;
 import com.backend.old_bicycle_project.dto.response.PaymentRequestResponseDTO;
 import com.backend.old_bicycle_project.dto.response.PaymentResponseDTO;
+import com.backend.old_bicycle_project.entity.FinancialTransaction;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Payment;
 import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
+import com.backend.old_bicycle_project.entity.enums.FinancialTransactionEntryType;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
@@ -18,9 +20,11 @@ import com.backend.old_bicycle_project.entity.enums.PaymentGateway;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentPhase;
 import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
+import com.backend.old_bicycle_project.entity.enums.PlatformFeeStatus;
 import com.backend.old_bicycle_project.entity.enums.RefundStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
+import com.backend.old_bicycle_project.repository.FinancialTransactionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
@@ -72,6 +76,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final RefundRequestRepository refundRequestRepository;
+    private final FinancialTransactionRepository financialTransactionRepository;
     private final SepayProperties sepayProperties;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -121,7 +126,9 @@ public class PaymentServiceImpl implements PaymentService {
                 || payment.getStatus() == PaymentStatus.expired) {
             payment = paymentRepository.save(Payment.builder()
                     .order(order)
-                    .amount(order.getRequiredUpfrontAmount())
+                    .amount(resolveBuyerChargeAmount(order))
+                    .protectedAmount(order.getRequiredUpfrontAmount())
+                    .buyerFeeAmount(resolveBuyerFeeAmount(order))
                     .gateway(PaymentGateway.sepay)
                     .method(order.getPaymentMethod())
                     .phase(PaymentPhase.upfront)
@@ -130,6 +137,9 @@ public class PaymentServiceImpl implements PaymentService {
                     .build());
         } else {
             payment.setStatus(PaymentStatus.processing);
+            payment.setAmount(resolveBuyerChargeAmount(order));
+            payment.setProtectedAmount(order.getRequiredUpfrontAmount());
+            payment.setBuyerFeeAmount(resolveBuyerFeeAmount(order));
         }
 
         order.setFundingStatus(OrderFundingStatus.awaiting_payment);
@@ -151,6 +161,8 @@ public class PaymentServiceImpl implements PaymentService {
                 .phase(payment.getPhase())
                 .status(payment.getStatus())
                 .amount(payment.getAmount())
+                .protectedAmount(payment.getProtectedAmount() != null ? payment.getProtectedAmount() : payment.getAmount())
+                .buyerFeeAmount(payment.getBuyerFeeAmount() != null ? payment.getBuyerFeeAmount() : BigDecimal.ZERO)
                 .gatewayOrderCode(payment.getGatewayOrderCode())
                 .checkoutUrl(payment.getCheckoutUrl())
                 .qrCodeUrl(payment.getQrCodeUrl())
@@ -355,9 +367,13 @@ public class PaymentServiceImpl implements PaymentService {
 
         Order order = payment.getOrder();
         BigDecimal currentPaid = order.getPaidAmount() != null ? order.getPaidAmount() : BigDecimal.ZERO;
-        BigDecimal newPaid = currentPaid.add(payment.getAmount());
+        BigDecimal protectedAmount = resolveProtectedAmount(payment);
+        BigDecimal newPaid = currentPaid.add(protectedAmount);
         order.setPaidAmount(newPaid);
         order.setRemainingAmount(maxZero(order.getTotalAmount().subtract(newPaid)));
+        if (order.getPlatformFeeTotal() != null && order.getPlatformFeeTotal().compareTo(BigDecimal.ZERO) > 0) {
+            order.setPlatformFeeStatus(PlatformFeeStatus.pending);
+        }
         if (order.getStatus() == OrderStatus.cancelled) {
             handleLatePaymentForCancelledOrder(order, payment);
             return;
@@ -367,6 +383,15 @@ public class PaymentServiceImpl implements PaymentService {
             order.setFundingStatus(OrderFundingStatus.held);
         }
         orderRepository.save(order);
+        recordFinancialTransaction(
+                order,
+                payment,
+                null,
+                null,
+                FinancialTransactionEntryType.buyer_charge_received,
+                resolveChargeAmount(payment),
+                "Buyer thanh toán thành công cho payment phase hiện tại."
+        );
 
         publishOrderNotification(
                 order.getBuyer().getId(),
@@ -700,6 +725,11 @@ public class PaymentServiceImpl implements PaymentService {
         order.setFundingStatus(OrderFundingStatus.unpaid);
         order.setCancelReason(OrderCancelReason.payment_expired);
         order.setCancelledAt(now);
+        if (order.getPlatformFeeStatus() == PlatformFeeStatus.pending) {
+            order.setPlatformFeeStatus(PlatformFeeStatus.not_applicable);
+            order.setPlatformFeeRecognizedAt(null);
+            order.setPlatformFeeReversedAt(null);
+        }
         orderRepository.save(order);
 
         if (!openPayments.isEmpty()) {
@@ -726,17 +756,22 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private void handleLatePaymentForCancelledOrder(Order order, Payment payment) {
-        BigDecimal paidAmount = order.getPaidAmount() != null ? order.getPaidAmount() : payment.getAmount();
+        BigDecimal protectedAmount = resolveProtectedAmount(payment);
+        BigDecimal chargeAmount = resolveChargeAmount(payment);
+        BigDecimal paidAmount = order.getPaidAmount() != null ? order.getPaidAmount() : protectedAmount;
         order.setPaidAmount(paidAmount);
         order.setRemainingAmount(maxZero(order.getTotalAmount().subtract(paidAmount)));
         order.setFundingStatus(OrderFundingStatus.refund_pending_transfer);
+        if (order.getPlatformFeeTotal() != null && order.getPlatformFeeTotal().compareTo(BigDecimal.ZERO) > 0) {
+            order.setPlatformFeeStatus(PlatformFeeStatus.pending);
+        }
 
         RefundRequest refundRequest = refundRequestRepository.findFirstByOrderIdOrderByCreatedAtDesc(order.getId())
                 .orElseGet(() -> RefundRequest.builder()
                         .order(order)
                         .payment(payment)
                         .requester(order.getBuyer())
-                        .amount(paidAmount)
+                        .amount(chargeAmount)
                         .reason("Hệ thống tự tạo hoàn tiền vì thanh toán đến sau khi đơn hàng đã bị hủy.")
                         .evidenceNote("Late payment received after order cancellation/expiry.")
                         .status(RefundStatus.approved)
@@ -745,7 +780,7 @@ public class PaymentServiceImpl implements PaymentService {
                         .build());
 
         refundRequest.setPayment(payment);
-        refundRequest.setAmount(paidAmount);
+        refundRequest.setAmount(chargeAmount);
         refundRequest.setStatus(RefundStatus.approved);
         refundRequest.setAdminNote(
                 "Tự động duyệt hoàn tiền vì hệ thống nhận thanh toán sau khi đơn đã hết hạn hoặc bị hủy."
@@ -804,6 +839,56 @@ public class PaymentServiceImpl implements PaymentService {
         return value.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : value;
     }
 
+    private BigDecimal resolveBuyerChargeAmount(Order order) {
+        if (order.getBuyerChargeAmount() != null && order.getBuyerChargeAmount().compareTo(BigDecimal.ZERO) > 0) {
+            return order.getBuyerChargeAmount();
+        }
+        return order.getRequiredUpfrontAmount();
+    }
+
+    private BigDecimal resolveBuyerFeeAmount(Order order) {
+        return order.getBuyerFeeAmount() != null ? order.getBuyerFeeAmount() : BigDecimal.ZERO;
+    }
+
+    private BigDecimal resolveProtectedAmount(Payment payment) {
+        if (payment.getProtectedAmount() != null && payment.getProtectedAmount().compareTo(BigDecimal.ZERO) > 0) {
+            return payment.getProtectedAmount();
+        }
+        return payment.getAmount();
+    }
+
+    private BigDecimal resolveChargeAmount(Payment payment) {
+        if (payment.getAmount() != null && payment.getAmount().compareTo(BigDecimal.ZERO) > 0) {
+            return payment.getAmount();
+        }
+        BigDecimal protectedAmount = resolveProtectedAmount(payment);
+        return protectedAmount != null ? protectedAmount : BigDecimal.ZERO;
+    }
+
+    private void recordFinancialTransaction(
+            Order order,
+            Payment payment,
+            com.backend.old_bicycle_project.entity.Payout payout,
+            RefundRequest refundRequest,
+            FinancialTransactionEntryType entryType,
+            BigDecimal amount,
+            String note
+    ) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        financialTransactionRepository.save(FinancialTransaction.builder()
+                .order(order)
+                .payment(payment)
+                .payout(payout)
+                .refundRequest(refundRequest)
+                .entryType(entryType)
+                .amount(amount)
+                .note(note)
+                .build());
+    }
+
     private void publishOrderNotification(UUID userId, String title, String content, String metadata) {
         eventPublisher.publishEvent(new NotificationEvent(
                 this,
@@ -820,6 +905,8 @@ public class PaymentServiceImpl implements PaymentService {
                 .id(payment.getId())
                 .orderId(payment.getOrder().getId())
                 .amount(payment.getAmount())
+                .protectedAmount(payment.getProtectedAmount() != null ? payment.getProtectedAmount() : payment.getAmount())
+                .buyerFeeAmount(payment.getBuyerFeeAmount() != null ? payment.getBuyerFeeAmount() : BigDecimal.ZERO)
                 .gateway(payment.getGateway())
                 .method(payment.getMethod())
                 .phase(payment.getPhase())

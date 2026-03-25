@@ -5,6 +5,7 @@ import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
+import com.backend.old_bicycle_project.entity.enums.PlatformFeeStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcType;
@@ -58,6 +59,50 @@ public class Order {
 
     @Column(name = "service_fee")
     private BigDecimal serviceFee;
+
+    @Builder.Default
+    @Column(name = "fee_base_amount", nullable = false)
+    private BigDecimal feeBaseAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "platform_fee_rate", nullable = false)
+    private BigDecimal platformFeeRate = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "platform_fee_total", nullable = false)
+    private BigDecimal platformFeeTotal = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "buyer_fee_amount", nullable = false)
+    private BigDecimal buyerFeeAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "seller_fee_amount", nullable = false)
+    private BigDecimal sellerFeeAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "buyer_charge_amount", nullable = false)
+    private BigDecimal buyerChargeAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "seller_gross_payout_amount", nullable = false)
+    private BigDecimal sellerGrossPayoutAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "seller_net_payout_amount", nullable = false)
+    private BigDecimal sellerNetPayoutAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "platform_fee_status", nullable = false, columnDefinition = "platform_fee_status")
+    private PlatformFeeStatus platformFeeStatus = PlatformFeeStatus.not_applicable;
+
+    @Column(name = "platform_fee_recognized_at")
+    private LocalDateTime platformFeeRecognizedAt;
+
+    @Column(name = "platform_fee_reversed_at")
+    private LocalDateTime platformFeeReversedAt;
 
     @Builder.Default
     @Enumerated(EnumType.STRING)

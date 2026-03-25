@@ -23,6 +23,8 @@ public class PaymentRequestResponseDTO {
     private PaymentPhase phase;
     private PaymentStatus status;
     private BigDecimal amount;
+    private BigDecimal protectedAmount;
+    private BigDecimal buyerFeeAmount;
     private String gatewayOrderCode;
     private String checkoutUrl;
     private String qrCodeUrl;

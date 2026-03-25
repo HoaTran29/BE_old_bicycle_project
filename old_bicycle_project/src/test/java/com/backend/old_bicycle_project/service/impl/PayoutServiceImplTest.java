@@ -17,6 +17,7 @@ import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutType;
 import com.backend.old_bicycle_project.entity.enums.RefundStatus;
 import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.repository.FinancialTransactionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PayoutProfileRepository;
 import com.backend.old_bicycle_project.repository.PayoutRepository;
@@ -59,6 +60,9 @@ class PayoutServiceImplTest {
 
     @Mock
     private PaymentRepository paymentRepository;
+
+    @Mock
+    private FinancialTransactionRepository financialTransactionRepository;
 
     @Mock
     private OrderRepository orderRepository;

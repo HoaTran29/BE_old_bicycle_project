@@ -78,7 +78,7 @@ public class RefundServiceImpl implements RefundService {
                 .filter(candidate -> candidate.getStatus() == PaymentStatus.success)
                 .orElseThrow(() -> new AppException(ErrorCode.REFUND_NOT_ALLOWED));
 
-        BigDecimal refundAmount = order.getPaidAmount();
+        BigDecimal refundAmount = payment.getAmount() != null ? payment.getAmount() : order.getPaidAmount();
         if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new AppException(ErrorCode.REFUND_NOT_ALLOWED);
         }

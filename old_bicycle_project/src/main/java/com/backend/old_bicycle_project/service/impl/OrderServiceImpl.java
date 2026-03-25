@@ -17,6 +17,7 @@ import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentOption;
+import com.backend.old_bicycle_project.entity.enums.PlatformFeeStatus;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
@@ -26,6 +27,7 @@ import com.backend.old_bicycle_project.repository.ReviewRepository;
 import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.OrderService;
 import com.backend.old_bicycle_project.service.PayoutService;
+import com.backend.old_bicycle_project.service.PlatformFeeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -50,6 +52,7 @@ public class OrderServiceImpl implements OrderService {
     private final ApplicationEventPublisher eventPublisher;
     private final PayoutService payoutService;
     private final OrderEvidenceService orderEvidenceService;
+    private final PlatformFeeService platformFeeService;
 
     @Override
     @Transactional
@@ -80,7 +83,17 @@ public class OrderServiceImpl implements OrderService {
                 ? requestDTO.getPaymentOption()
                 : PaymentOption.partial;
         BigDecimal requiredUpfrontAmount = resolveRequiredUpfrontAmount(requestDTO, product.getPrice(), paymentOption);
-        BigDecimal serviceFee = requestDTO.getServiceFee() != null ? requestDTO.getServiceFee() : BigDecimal.ZERO;
+        PlatformFeeService.PlatformFeeQuote platformFeeQuote = platformFeeService.calculate(
+                product.getPrice(),
+                requiredUpfrontAmount,
+                requestDTO.getPaymentMethod()
+        );
+
+        if (paymentOption == PaymentOption.partial
+                && requestDTO.getPaymentMethod() != PaymentMethod.cash
+                && platformFeeQuote.sellerFeeAmount().compareTo(requiredUpfrontAmount) > 0) {
+            throw new AppException(ErrorCode.UPFRONT_AMOUNT_TOO_LOW);
+        }
 
         Order order = orderRepository.save(Order.builder()
                 .buyer(currentUser)
@@ -91,7 +104,16 @@ public class OrderServiceImpl implements OrderService {
                 .requiredUpfrontAmount(requiredUpfrontAmount)
                 .paidAmount(BigDecimal.ZERO)
                 .remainingAmount(product.getPrice())
-                .serviceFee(serviceFee)
+                .serviceFee(platformFeeQuote.platformFeeTotal())
+                .feeBaseAmount(platformFeeQuote.feeBaseAmount())
+                .platformFeeRate(platformFeeQuote.platformFeeRate())
+                .platformFeeTotal(platformFeeQuote.platformFeeTotal())
+                .buyerFeeAmount(platformFeeQuote.buyerFeeAmount())
+                .sellerFeeAmount(platformFeeQuote.sellerFeeAmount())
+                .buyerChargeAmount(platformFeeQuote.buyerChargeAmount())
+                .sellerGrossPayoutAmount(platformFeeQuote.sellerGrossPayoutAmount())
+                .sellerNetPayoutAmount(platformFeeQuote.sellerNetPayoutAmount())
+                .platformFeeStatus(platformFeeQuote.platformFeeStatus())
                 .paymentOption(paymentOption)
                 .paymentMethod(requestDTO.getPaymentMethod())
                 .fundingStatus(OrderFundingStatus.unpaid)
@@ -225,8 +247,6 @@ public class OrderServiceImpl implements OrderService {
 
         order.setStatus(OrderStatus.completed);
         order.setFundingStatus(OrderFundingStatus.seller_payout_pending);
-        order.setPaidAmount(order.getTotalAmount());
-        order.setRemainingAmount(BigDecimal.ZERO);
         order.getProduct().setStatus(ProductStatus.sold);
         productRepository.save(order.getProduct());
         order = orderRepository.save(order);
@@ -287,6 +307,11 @@ public class OrderServiceImpl implements OrderService {
         if (order.getFundingStatus() == OrderFundingStatus.awaiting_payment) {
             order.setFundingStatus(OrderFundingStatus.unpaid);
         }
+        if (isUnpaidOrAwaitingPayment(order) && order.getPlatformFeeStatus() == PlatformFeeStatus.pending) {
+            order.setPlatformFeeStatus(PlatformFeeStatus.not_applicable);
+            order.setPlatformFeeRecognizedAt(null);
+            order.setPlatformFeeReversedAt(null);
+        }
         order.setCancelledAt(LocalDateTime.now());
         if (currentUser.getRole() == AppRole.admin) {
             order.setCancelReason(OrderCancelReason.admin_cancelled);
@@ -317,6 +342,11 @@ public class OrderServiceImpl implements OrderService {
             throw new AppException(ErrorCode.INVALID_KEY);
         }
         return requestedAmount;
+    }
+
+    private boolean isUnpaidOrAwaitingPayment(Order order) {
+        return order.getFundingStatus() == OrderFundingStatus.unpaid
+                || order.getFundingStatus() == OrderFundingStatus.awaiting_payment;
     }
 
     private Order getOrder(UUID orderId) {
@@ -378,6 +408,17 @@ public class OrderServiceImpl implements OrderService {
                 .paidAmount(order.getPaidAmount())
                 .remainingAmount(order.getRemainingAmount())
                 .serviceFee(order.getServiceFee())
+                .feeBaseAmount(order.getFeeBaseAmount())
+                .platformFeeRate(order.getPlatformFeeRate())
+                .platformFeeTotal(order.getPlatformFeeTotal())
+                .buyerFeeAmount(order.getBuyerFeeAmount())
+                .sellerFeeAmount(order.getSellerFeeAmount())
+                .buyerChargeAmount(order.getBuyerChargeAmount())
+                .sellerGrossPayoutAmount(order.getSellerGrossPayoutAmount())
+                .sellerNetPayoutAmount(order.getSellerNetPayoutAmount())
+                .platformFeeStatus(order.getPlatformFeeStatus())
+                .platformFeeRecognizedAt(order.getPlatformFeeRecognizedAt())
+                .platformFeeReversedAt(order.getPlatformFeeReversedAt())
                 .paymentOption(order.getPaymentOption())
                 .status(order.getStatus())
                 .fundingStatus(order.getFundingStatus())

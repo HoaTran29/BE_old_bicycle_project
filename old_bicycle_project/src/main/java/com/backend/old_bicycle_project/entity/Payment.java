@@ -36,6 +36,14 @@ public class Payment {
     private BigDecimal amount;
 
     @Builder.Default
+    @Column(name = "protected_amount", nullable = false)
+    private BigDecimal protectedAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "buyer_fee_amount", nullable = false)
+    private BigDecimal buyerFeeAmount = BigDecimal.ZERO;
+
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "gateway")
     private PaymentGateway gateway = PaymentGateway.manual;

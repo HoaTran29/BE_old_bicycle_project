@@ -18,7 +18,11 @@ public class DashboardStatsDTO {
     private long totalUsers;
     private long totalProducts;
     private long totalOrders;
-    private BigDecimal totalRevenue; // Sum of total_amount where status is COMPLETED
+    private BigDecimal totalRevenue; // Legacy alias of totalGmv for FE compatibility
+    private BigDecimal totalGmv;
+    private BigDecimal pendingPlatformFee;
+    private BigDecimal recognizedPlatformRevenue;
+    private BigDecimal reversedPlatformFee;
 
     // Inspection Stats
     private long totalInspections;
@@ -26,6 +30,8 @@ public class DashboardStatsDTO {
     private long failedInspections;
 
     // Monthly Data (for charts)
-    private Map<String, BigDecimal> monthlyRevenue; // "YYYY-MM" -> amount
-    private Map<String, Long> monthlyOrders;        // "YYYY-MM" -> count
+    private Map<String, BigDecimal> monthlyRevenue; // Legacy alias of monthlyGmv for FE compatibility
+    private Map<String, BigDecimal> monthlyGmv; // "YYYY-MM" -> amount
+    private Map<String, BigDecimal> monthlyRecognizedPlatformRevenue; // "YYYY-MM" -> amount
+    private Map<String, Long> monthlyOrders; // "YYYY-MM" -> count
 }
