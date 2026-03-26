@@ -13,7 +13,7 @@ public class PlatformFeeServiceImpl implements PlatformFeeService {
 
     private static final BigDecimal PLATFORM_FEE_RATE = new BigDecimal("0.0200");
     private static final BigDecimal ONE_THOUSAND = new BigDecimal("1000");
-    private static final BigDecimal MIN_PLATFORM_FEE = new BigDecimal("20000");
+    private static final BigDecimal MIN_PLATFORM_FEE = new BigDecimal("1000");
     private static final BigDecimal MAX_PLATFORM_FEE = new BigDecimal("500000");
     private static final BigDecimal TWO = new BigDecimal("2");
 
@@ -34,8 +34,7 @@ public class PlatformFeeServiceImpl implements PlatformFeeService {
                     normalizedProtectedAmount,
                     normalizedProtectedAmount,
                     normalizedProtectedAmount,
-                    PlatformFeeStatus.not_applicable
-            );
+                    PlatformFeeStatus.not_applicable);
         }
 
         BigDecimal rawPlatformFee = normalizedTotalAmount.multiply(PLATFORM_FEE_RATE);
@@ -58,8 +57,7 @@ public class PlatformFeeServiceImpl implements PlatformFeeService {
                 buyerChargeAmount,
                 sellerGrossPayoutAmount,
                 sellerNetPayoutAmount,
-                PlatformFeeStatus.pending
-        );
+                PlatformFeeStatus.pending);
     }
 
     private boolean isPlatformFeeApplicable(PaymentMethod paymentMethod) {

@@ -3,9 +3,11 @@ package com.backend.old_bicycle_project.service.impl;
 import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.ReportProcessDTO;
 import com.backend.old_bicycle_project.dto.request.ReportRequestDTO;
+import com.backend.old_bicycle_project.dto.response.ReportEvidenceFileResponseDTO;
 import com.backend.old_bicycle_project.dto.response.ReportResponseDTO;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.Report;
+import com.backend.old_bicycle_project.entity.ReportFile;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
@@ -18,6 +20,7 @@ import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.ReportRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.ReportService;
+import com.backend.old_bicycle_project.service.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -26,8 +29,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,15 +43,17 @@ import java.util.UUID;
 public class ReportServiceImpl implements ReportService {
 
     private static final List<ReportStatus> OPEN_REPORT_STATUSES = List.of(ReportStatus.pending, ReportStatus.reviewed);
+    private static final int MAX_REPORT_EVIDENCE_FILES = 3;
 
     private final ReportRepository reportRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final StorageService storageService;
 
     @Override
     @Transactional
-    public ReportResponseDTO submitReport(UUID reporterId, ReportRequestDTO requestDTO) {
+    public ReportResponseDTO submitReport(UUID reporterId, ReportRequestDTO requestDTO, List<MultipartFile> files) {
         User reporter = userRepository.findById(reporterId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
@@ -59,16 +67,16 @@ public class ReportServiceImpl implements ReportService {
             throw new AppException(ErrorCode.RECORD_ALREADY_EXISTS);
         }
 
-        Report report = Report.builder()
+        Report report = reportRepository.save(Report.builder()
                 .reporter(reporter)
                 .targetId(requestDTO.getTargetId())
                 .targetType(normalizeTargetType(requestDTO.getTargetType()))
                 .reason(requestDTO.getReason())
                 .description(trimToNull(requestDTO.getDescription()))
                 .status(ReportStatus.pending)
-                .build();
+                .build());
 
-        report = reportRepository.save(report);
+        report = attachEvidenceFiles(report, files);
         publishPendingReportNotification(report);
         return mapToDTO(report);
     }
@@ -204,6 +212,75 @@ public class ReportServiceImpl implements ReportService {
                 )));
     }
 
+    private Report attachEvidenceFiles(Report report, List<MultipartFile> files) {
+        List<MultipartFile> normalizedFiles = normalizeFiles(files);
+        validateFiles(normalizedFiles);
+
+        if (normalizedFiles.isEmpty()) {
+            return report;
+        }
+
+        List<String> uploadedUrls = new ArrayList<>();
+
+        try {
+            for (int index = 0; index < normalizedFiles.size(); index++) {
+                MultipartFile file = normalizedFiles.get(index);
+                String fileUrl = storageService.uploadFile(file, buildReportEvidenceFolder(report.getId()));
+                uploadedUrls.add(fileUrl);
+                report.addEvidenceFile(ReportFile.builder()
+                        .fileUrl(fileUrl)
+                        .fileName(file.getOriginalFilename())
+                        .contentType(file.getContentType())
+                        .sortOrder(index)
+                        .build());
+            }
+
+            return reportRepository.save(report);
+        } catch (RuntimeException exception) {
+            uploadedUrls.forEach(storageService::deleteFile);
+            throw exception;
+        }
+    }
+
+    private List<MultipartFile> normalizeFiles(List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+
+        return files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .toList();
+    }
+
+    private void validateFiles(List<MultipartFile> files) {
+        if (files.size() > MAX_REPORT_EVIDENCE_FILES) {
+            throw new AppException(ErrorCode.REPORT_EVIDENCE_LIMIT_EXCEEDED);
+        }
+
+        for (MultipartFile file : files) {
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
+                throw new AppException(ErrorCode.REPORT_EVIDENCE_IMAGE_ONLY);
+            }
+        }
+    }
+
+    private List<ReportEvidenceFileResponseDTO> mapEvidenceFiles(Collection<ReportFile> files) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+
+        return files.stream()
+                .map(file -> ReportEvidenceFileResponseDTO.builder()
+                        .id(file.getId())
+                        .fileUrl(file.getFileUrl())
+                        .fileName(file.getFileName())
+                        .contentType(file.getContentType())
+                        .sortOrder(file.getSortOrder())
+                        .build())
+                .toList();
+    }
+
     private ReportResponseDTO mapToDTO(Report report) {
         return ReportResponseDTO.builder()
                 .id(report.getId())
@@ -213,6 +290,7 @@ public class ReportServiceImpl implements ReportService {
                 .targetType(report.getTargetType())
                 .reason(report.getReason())
                 .description(report.getDescription())
+                .evidenceFiles(mapEvidenceFiles(report.getEvidenceFiles()))
                 .status(report.getStatus())
                 .adminNote(report.getAdminNote())
                 .processedById(report.getProcessedBy() != null ? report.getProcessedBy().getId() : null)
@@ -220,6 +298,10 @@ public class ReportServiceImpl implements ReportService {
                 .createdAt(report.getCreatedAt())
                 .processedAt(report.getProcessedAt())
                 .build();
+    }
+
+    private String buildReportEvidenceFolder(UUID reportId) {
+        return "reports/" + reportId;
     }
 
     private String normalizeTargetType(String targetType) {

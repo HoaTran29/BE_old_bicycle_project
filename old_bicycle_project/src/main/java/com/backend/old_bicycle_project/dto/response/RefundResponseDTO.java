@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -23,6 +24,7 @@ public class RefundResponseDTO {
     private BigDecimal amount;
     private String reason;
     private String evidenceNote;
+    private List<RefundEvidenceFileResponseDTO> evidenceFiles;
     private RefundStatus status;
     private String adminNote;
     private String refundReference;

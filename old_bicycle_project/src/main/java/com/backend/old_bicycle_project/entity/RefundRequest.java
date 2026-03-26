@@ -8,6 +8,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -45,6 +47,11 @@ public class RefundRequest {
     private String evidenceNote;
 
     @Builder.Default
+    @OneToMany(mappedBy = "refundRequest", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC, createdAt ASC")
+    private List<RefundRequestFile> evidenceFiles = new ArrayList<>();
+
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private RefundStatus status = RefundStatus.pending;
@@ -72,4 +79,9 @@ public class RefundRequest {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    public void addEvidenceFile(RefundRequestFile file) {
+        evidenceFiles.add(file);
+        file.setRefundRequest(this);
+    }
 }

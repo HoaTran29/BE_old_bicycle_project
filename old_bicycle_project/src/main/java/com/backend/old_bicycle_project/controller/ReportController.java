@@ -13,10 +13,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -26,11 +30,12 @@ public class ReportController {
     private final ReportService reportService;
 
     // User Endpoint
-    @PostMapping("/api/reports")
+    @PostMapping(value = "/api/reports", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<ReportResponseDTO>> submitReport(
             @AuthenticationPrincipal User currentUser,
-            @RequestBody @Valid ReportRequestDTO requestDTO) {
-        ReportResponseDTO responseDTO = reportService.submitReport(currentUser.getId(), requestDTO);
+            @ModelAttribute @Valid ReportRequestDTO requestDTO,
+            @RequestPart(value = "files", required = false) List<MultipartFile> files) {
+        ReportResponseDTO responseDTO = reportService.submitReport(currentUser.getId(), requestDTO, files);
         return ResponseEntity.ok(ApiResponse.<ReportResponseDTO>builder()
                 .code(200)
                 .message("Report submitted successfully")

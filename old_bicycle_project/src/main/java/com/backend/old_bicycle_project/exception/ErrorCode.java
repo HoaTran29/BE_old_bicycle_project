@@ -47,7 +47,11 @@ public enum ErrorCode {
     ASSISTANT_NOT_CONFIGURED(1039, "AI assistant is not configured for this environment", HttpStatus.SERVICE_UNAVAILABLE),
     ASSISTANT_REQUEST_FAILED(1040, "AI assistant request failed", HttpStatus.BAD_GATEWAY),
     PAYOUT_PROFILE_REQUIRED(1041, "Payout profile is required before this action", HttpStatus.BAD_REQUEST),
-    UPFRONT_AMOUNT_TOO_LOW(1042, "Upfront amount is too low for the current platform fee policy", HttpStatus.BAD_REQUEST);
+    UPFRONT_AMOUNT_TOO_LOW(1042, "Upfront amount is too low for the current platform fee policy", HttpStatus.BAD_REQUEST),
+    REFUND_EVIDENCE_LIMIT_EXCEEDED(1043, "You can upload up to 3 refund evidence images", HttpStatus.BAD_REQUEST),
+    REFUND_EVIDENCE_IMAGE_ONLY(1044, "Only image files are allowed for refund evidence", HttpStatus.BAD_REQUEST),
+    REPORT_EVIDENCE_LIMIT_EXCEEDED(1045, "You can upload up to 3 report evidence images", HttpStatus.BAD_REQUEST),
+    REPORT_EVIDENCE_IMAGE_ONLY(1046, "Only image files are allowed for report evidence", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
         this.code = code;

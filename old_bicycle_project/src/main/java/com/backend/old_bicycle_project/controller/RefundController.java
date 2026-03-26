@@ -11,10 +11,14 @@ import com.backend.old_bicycle_project.service.RefundService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -23,15 +27,16 @@ public class RefundController {
 
     private final RefundService refundService;
 
-    @PostMapping("/api/orders/{orderId}/refunds")
+    @PostMapping(value = "/api/orders/{orderId}/refunds", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('BUYER')")
     public ApiResponse<RefundResponseDTO> requestRefund(
             @PathVariable UUID orderId,
             @AuthenticationPrincipal User currentUser,
-            @RequestBody @Valid RefundCreateRequestDTO requestDTO) {
+            @ModelAttribute @Valid RefundCreateRequestDTO requestDTO,
+            @RequestPart(value = "files", required = false) List<MultipartFile> files) {
         return ApiResponse.<RefundResponseDTO>builder()
                 .message("Refund request created successfully")
-                .result(refundService.requestRefund(orderId, currentUser, requestDTO))
+                .result(refundService.requestRefund(orderId, currentUser, requestDTO, files))
                 .build();
     }
 

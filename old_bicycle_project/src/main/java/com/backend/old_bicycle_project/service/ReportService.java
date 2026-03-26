@@ -6,7 +6,9 @@ import com.backend.old_bicycle_project.dto.response.ReportResponseDTO;
 import com.backend.old_bicycle_project.entity.enums.ReportStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface ReportService {
@@ -14,7 +16,7 @@ public interface ReportService {
     /**
      * User submits a report
      */
-    ReportResponseDTO submitReport(UUID reporterId, ReportRequestDTO requestDTO);
+    ReportResponseDTO submitReport(UUID reporterId, ReportRequestDTO requestDTO, List<MultipartFile> files);
 
     /**
      * Admin gets paginated list of reports

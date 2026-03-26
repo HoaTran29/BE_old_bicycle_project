@@ -1,9 +1,9 @@
 package com.backend.old_bicycle_project.service.impl;
 
+import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.ReportProcessDTO;
 import com.backend.old_bicycle_project.dto.request.ReportRequestDTO;
 import com.backend.old_bicycle_project.dto.response.ReportResponseDTO;
-import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.Report;
 import com.backend.old_bicycle_project.entity.User;
@@ -17,13 +17,16 @@ import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.ReportRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
+import com.backend.old_bicycle_project.service.StorageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.mock.web.MockMultipartFile;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,6 +50,9 @@ class ReportServiceImplTest {
     private ProductRepository productRepository;
 
     @Mock
+    private StorageService storageService;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
@@ -61,12 +67,14 @@ class ReportServiceImplTest {
         User admin = user(adminId, AppRole.admin);
 
         when(userRepository.findById(reporterId)).thenReturn(Optional.of(reporter));
-        when(userRepository.findByRole(AppRole.admin)).thenReturn(java.util.List.of(admin));
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(admin));
         when(productRepository.existsById(targetId)).thenReturn(true);
         when(reportRepository.existsByReporterIdAndTargetIdAndStatusIn(any(), any(), any())).thenReturn(false);
         when(reportRepository.save(any(Report.class))).thenAnswer(invocation -> {
             Report report = invocation.getArgument(0);
-            report.setId(UUID.randomUUID());
+            if (report.getId() == null) {
+                report.setId(UUID.randomUUID());
+            }
             return report;
         });
 
@@ -75,10 +83,53 @@ class ReportServiceImplTest {
                 .targetType("PRODUCT")
                 .reason(ReportReason.spam)
                 .description("Listing contains suspicious content")
-                .build());
+                .build(), null);
 
         assertThat(response.getStatus()).isEqualTo(ReportStatus.pending);
         verify(eventPublisher).publishEvent(any(NotificationEvent.class));
+    }
+
+    @Test
+    void submitReportStoresEvidenceFilesWhenImagesAreProvided() {
+        UUID reporterId = UUID.randomUUID();
+        UUID targetId = UUID.randomUUID();
+        User reporter = user(reporterId, AppRole.buyer);
+
+        when(userRepository.findById(reporterId)).thenReturn(Optional.of(reporter));
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of());
+        when(productRepository.existsById(targetId)).thenReturn(true);
+        when(reportRepository.existsByReporterIdAndTargetIdAndStatusIn(any(), any(), any())).thenReturn(false);
+        when(storageService.uploadFile(any(), any())).thenReturn("https://cdn.example.com/report-1.jpg");
+        when(reportRepository.save(any(Report.class))).thenAnswer(invocation -> {
+            Report report = invocation.getArgument(0);
+            if (report.getId() == null) {
+                report.setId(UUID.randomUUID());
+            }
+            report.getEvidenceFiles().forEach(file -> {
+                if (file.getId() == null) {
+                    file.setId(UUID.randomUUID());
+                }
+            });
+            return report;
+        });
+
+        MockMultipartFile image = new MockMultipartFile(
+                "files",
+                "listing-proof.jpg",
+                "image/jpeg",
+                "fake-image".getBytes()
+        );
+
+        ReportResponseDTO response = reportService.submitReport(reporterId, ReportRequestDTO.builder()
+                .targetId(targetId)
+                .targetType("PRODUCT")
+                .reason(ReportReason.fake)
+                .description("Ảnh chụp không đúng xe")
+                .build(), List.of(image));
+
+        assertThat(response.getEvidenceFiles()).hasSize(1);
+        assertThat(response.getEvidenceFiles().get(0).getFileName()).isEqualTo("listing-proof.jpg");
+        verify(storageService).uploadFile(any(), any());
     }
 
     @Test
@@ -98,7 +149,7 @@ class ReportServiceImplTest {
                 .description("Spam listing")
                 .build();
 
-        assertThatThrownBy(() -> reportService.submitReport(reporterId, request))
+        assertThatThrownBy(() -> reportService.submitReport(reporterId, request, null))
                 .isInstanceOfSatisfying(AppException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.RECORD_ALREADY_EXISTS));
     }

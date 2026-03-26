@@ -43,6 +43,9 @@ description: Planning blueprint for implementing Policy V2 with fee base on tota
 - [x] Add FE tests for payout display helpers and dashboard wording/metrics
 - [x] Add page-level FE regression coverage for the buyer order pricing dialog and buyer payment breakdown flow
 - [x] Add a mocked cross-page FE buyer-flow integration regression for `product detail -> order -> payment request -> refund`
+- [x] Extend refund request flow with multipart evidence upload support and admin dispute rendering for buyer-uploaded refund images
+- [x] Mount real report entry points on `BikeDetailPage` so users can report `product` or `seller` without relying on hidden admin-only screens
+- [x] Extend report flow with multipart image evidence upload support and render the evidence back in admin/my-report FE screens
 - [x] Sync SRS sections for orders, payments, payouts, dashboard, and business rules
 - [x] Keep the knowledge note for Policy V2 aligned with the current implementation slice
 
@@ -93,6 +96,15 @@ Phase 4 buyer-flow regression completed on `2026-03-25`:
 
 - FE now has a mocked cross-page integration regression for the buyer journey from `BikeDetailPage` order creation to `BuyerOrdersView` payment instructions and refund request
 - this regression does not replace a real browser E2E stack, but it closes the main FE contract gap for the Policy V2 buyer path with the current Vitest-based infrastructure
+
+Follow-up dispute/report UX hardening completed on `2026-03-26`:
+
+- refund requests now support multipart image uploads via `/api/orders/{orderId}/refunds`
+- admin dispute detail now renders buyer-uploaded refund evidence images in addition to seller handover / buyer receipt order evidence
+- `BikeDetailPage` now mounts real report actions for both product and seller targets instead of leaving report submit flow unreachable from normal buyer UI
+- report submit now supports multipart image uploads via `/api/reports`
+- admin report detail and `MyReportsPage` now render user-uploaded report evidence images
+- focused backend + FE regression coverage was added for refund evidence upload forwarding, report evidence upload, and the live report entrypoint
 
 Still intentionally pending:
 

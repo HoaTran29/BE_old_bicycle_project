@@ -5,11 +5,13 @@ import com.backend.old_bicycle_project.dto.request.RefundCreateRequestDTO;
 import com.backend.old_bicycle_project.dto.request.RefundReviewRequestDTO;
 import com.backend.old_bicycle_project.dto.response.AdminRefundResponseDTO;
 import com.backend.old_bicycle_project.dto.response.OrderEvidenceSubmissionResponseDTO;
+import com.backend.old_bicycle_project.dto.response.RefundEvidenceFileResponseDTO;
 import com.backend.old_bicycle_project.dto.response.RefundResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
-import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Payment;
+import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.RefundRequest;
+import com.backend.old_bicycle_project.entity.RefundRequestFile;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
@@ -29,6 +31,7 @@ import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.RefundService;
+import com.backend.old_bicycle_project.service.StorageService;
 import com.backend.old_bicycle_project.specification.RefundRequestSpecification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -37,10 +40,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -48,6 +55,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class RefundServiceImpl implements RefundService {
+
+    private static final int MAX_REFUND_EVIDENCE_FILES = 3;
 
     private final RefundRequestRepository refundRequestRepository;
     private final OrderRepository orderRepository;
@@ -57,10 +66,16 @@ public class RefundServiceImpl implements RefundService {
     private final ApplicationEventPublisher eventPublisher;
     private final PayoutService payoutService;
     private final OrderEvidenceService orderEvidenceService;
+    private final StorageService storageService;
 
     @Override
     @Transactional
-    public RefundResponseDTO requestRefund(UUID orderId, User currentUser, RefundCreateRequestDTO requestDTO) {
+    public RefundResponseDTO requestRefund(
+            UUID orderId,
+            User currentUser,
+            RefundCreateRequestDTO requestDTO,
+            List<MultipartFile> files
+    ) {
         Order order = orderRepository.findByIdAndBuyerId(orderId, currentUser.getId())
                 .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
 
@@ -91,10 +106,12 @@ public class RefundServiceImpl implements RefundService {
                 .payment(payment)
                 .requester(currentUser)
                 .amount(refundAmount)
-                .reason(requestDTO.getReason())
-                .evidenceNote(requestDTO.getEvidenceNote())
+                .reason(normalizeText(requestDTO.getReason()))
+                .evidenceNote(normalizeText(requestDTO.getEvidenceNote()))
                 .status(RefundStatus.pending)
                 .build());
+
+        refundRequest = attachEvidenceFiles(refundRequest, files);
 
         order.setFundingStatus(OrderFundingStatus.refund_pending);
         orderRepository.save(order);
@@ -135,6 +152,7 @@ public class RefundServiceImpl implements RefundService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<AdminRefundResponseDTO> getAdminRefunds(String keyword, RefundStatus status, int page, int size) {
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<RefundRequest> refundPage = refundRequestRepository.findAll(
@@ -256,6 +274,88 @@ public class RefundServiceImpl implements RefundService {
                 )));
     }
 
+    private RefundRequest attachEvidenceFiles(RefundRequest refundRequest, List<MultipartFile> files) {
+        List<MultipartFile> normalizedFiles = normalizeFiles(files);
+        validateFiles(normalizedFiles);
+
+        if (normalizedFiles.isEmpty()) {
+            return refundRequest;
+        }
+
+        List<String> uploadedUrls = new ArrayList<>();
+
+        try {
+            for (int index = 0; index < normalizedFiles.size(); index++) {
+                MultipartFile file = normalizedFiles.get(index);
+                String fileUrl = storageService.uploadFile(file, buildRefundEvidenceFolder(refundRequest.getId()));
+                uploadedUrls.add(fileUrl);
+                refundRequest.addEvidenceFile(RefundRequestFile.builder()
+                        .fileUrl(fileUrl)
+                        .fileName(file.getOriginalFilename())
+                        .contentType(file.getContentType())
+                        .sortOrder(index)
+                        .build());
+            }
+
+            return refundRequestRepository.save(refundRequest);
+        } catch (RuntimeException exception) {
+            uploadedUrls.forEach(storageService::deleteFile);
+            throw exception;
+        }
+    }
+
+    private List<MultipartFile> normalizeFiles(List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+
+        return files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .toList();
+    }
+
+    private void validateFiles(List<MultipartFile> files) {
+        if (files.size() > MAX_REFUND_EVIDENCE_FILES) {
+            throw new AppException(ErrorCode.REFUND_EVIDENCE_LIMIT_EXCEEDED);
+        }
+
+        for (MultipartFile file : files) {
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
+                throw new AppException(ErrorCode.REFUND_EVIDENCE_IMAGE_ONLY);
+            }
+        }
+    }
+
+    private String normalizeText(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String buildRefundEvidenceFolder(UUID refundId) {
+        return "refunds/" + refundId;
+    }
+
+    private List<RefundEvidenceFileResponseDTO> mapEvidenceFiles(Collection<RefundRequestFile> files) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+
+        return files.stream()
+                .map(file -> RefundEvidenceFileResponseDTO.builder()
+                        .id(file.getId())
+                        .fileUrl(file.getFileUrl())
+                        .fileName(file.getFileName())
+                        .contentType(file.getContentType())
+                        .sortOrder(file.getSortOrder())
+                        .build())
+                .toList();
+    }
+
     private RefundResponseDTO mapToDTO(RefundRequest refundRequest) {
         return RefundResponseDTO.builder()
                 .id(refundRequest.getId())
@@ -266,6 +366,7 @@ public class RefundServiceImpl implements RefundService {
                 .amount(refundRequest.getAmount())
                 .reason(refundRequest.getReason())
                 .evidenceNote(refundRequest.getEvidenceNote())
+                .evidenceFiles(mapEvidenceFiles(refundRequest.getEvidenceFiles()))
                 .status(refundRequest.getStatus())
                 .adminNote(refundRequest.getAdminNote())
                 .refundReference(refundRequest.getRefundReference())
@@ -301,6 +402,7 @@ public class RefundServiceImpl implements RefundService {
                 .amount(refundRequest.getAmount())
                 .reason(refundRequest.getReason())
                 .evidenceNote(refundRequest.getEvidenceNote())
+                .evidenceFiles(mapEvidenceFiles(refundRequest.getEvidenceFiles()))
                 .status(refundRequest.getStatus())
                 .adminNote(refundRequest.getAdminNote())
                 .refundReference(refundRequest.getRefundReference())
