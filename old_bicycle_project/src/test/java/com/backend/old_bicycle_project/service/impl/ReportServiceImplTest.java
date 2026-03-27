@@ -33,6 +33,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -155,7 +156,46 @@ class ReportServiceImplTest {
     }
 
     @Test
-    void processReportAddsAuditFieldsAndAppliesUserSanctionWhenResolved() {
+    void processReportCanMovePendingReportIntoInvestigating() {
+        UUID reportId = UUID.randomUUID();
+        UUID reporterId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        User reporter = user(reporterId, AppRole.buyer);
+        User admin = user(adminId, AppRole.admin);
+        Report report = Report.builder()
+                .id(reportId)
+                .reporter(reporter)
+                .targetId(UUID.randomUUID())
+                .targetType("PRODUCT")
+                .reason(ReportReason.spam)
+                .status(ReportStatus.pending)
+                .build();
+
+        when(reportRepository.findById(reportId)).thenReturn(Optional.of(report));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(reportRepository.save(any(Report.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ReportResponseDTO response = reportService.processReport(
+                reportId,
+                ReportProcessDTO.builder()
+                        .status(ReportStatus.investigating)
+                        .adminNote("Cần thêm bằng chứng")
+                        .build(),
+                adminId
+        );
+
+        assertThat(response.getStatus()).isEqualTo(ReportStatus.investigating);
+        assertThat(response.getAdminNote()).isEqualTo("Cần thêm bằng chứng");
+        assertThat(response.getProcessedById()).isEqualTo(adminId);
+        assertThat(response.getProcessedAt()).isNotNull();
+        verify(productRepository, never()).save(any(Product.class));
+        verify(userRepository, never()).save(any(User.class));
+        verify(eventPublisher, times(1)).publishEvent(any());
+    }
+
+    @Test
+    void processReportAddsAuditFieldsAndAppliesUserSanctionWhenViolationIsUpheld() {
         UUID reportId = UUID.randomUUID();
         UUID reporterId = UUID.randomUUID();
         UUID targetUserId = UUID.randomUUID();
@@ -170,7 +210,7 @@ class ReportServiceImplTest {
                 .targetId(targetUserId)
                 .targetType("USER")
                 .reason(ReportReason.fraud)
-                .status(ReportStatus.pending)
+                .status(ReportStatus.investigating)
                 .build();
 
         when(reportRepository.findById(reportId)).thenReturn(Optional.of(report));
@@ -182,13 +222,13 @@ class ReportServiceImplTest {
         ReportResponseDTO response = reportService.processReport(
                 reportId,
                 ReportProcessDTO.builder()
-                        .status(ReportStatus.resolved)
+                        .status(ReportStatus.resolved_upheld)
                         .adminNote("Đã xác minh và khóa tài khoản")
                         .build(),
                 adminId
         );
 
-        assertThat(response.getStatus()).isEqualTo(ReportStatus.resolved);
+        assertThat(response.getStatus()).isEqualTo(ReportStatus.resolved_upheld);
         assertThat(response.getAdminNote()).isEqualTo("Đã xác minh và khóa tài khoản");
         assertThat(response.getProcessedById()).isEqualTo(adminId);
         assertThat(response.getProcessedAt()).isNotNull();
@@ -197,18 +237,16 @@ class ReportServiceImplTest {
     }
 
     @Test
-    void processReportHidesProductWhenResolved() {
+    void processReportDismissesCaseWithoutApplyingSanction() {
         UUID reportId = UUID.randomUUID();
         UUID reporterId = UUID.randomUUID();
         UUID targetProductId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
 
         User reporter = user(reporterId, AppRole.buyer);
-        User seller = user(UUID.randomUUID(), AppRole.seller);
         User admin = user(adminId, AppRole.admin);
         Product product = Product.builder()
                 .id(targetProductId)
-                .seller(seller)
                 .status(ProductStatus.active)
                 .build();
         Report report = Report.builder()
@@ -217,26 +255,60 @@ class ReportServiceImplTest {
                 .targetId(targetProductId)
                 .targetType("PRODUCT")
                 .reason(ReportReason.other)
-                .status(ReportStatus.pending)
+                .status(ReportStatus.investigating)
                 .build();
 
         when(reportRepository.findById(reportId)).thenReturn(Optional.of(report));
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
-        when(productRepository.findById(targetProductId)).thenReturn(Optional.of(product));
-        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(reportRepository.save(any(Report.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ReportResponseDTO response = reportService.processReport(
                 reportId,
                 ReportProcessDTO.builder()
-                        .status(ReportStatus.resolved)
-                        .adminNote("Ẩn tin đăng vi phạm")
+                        .status(ReportStatus.resolved_dismissed)
+                        .adminNote("Chưa đủ bằng chứng để kết luận vi phạm")
                         .build(),
                 adminId
         );
 
-        assertThat(response.getStatus()).isEqualTo(ReportStatus.resolved);
-        assertThat(product.getStatus()).isEqualTo(ProductStatus.hidden);
+        assertThat(response.getStatus()).isEqualTo(ReportStatus.resolved_dismissed);
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.active);
+        verify(productRepository, never()).save(any(Product.class));
+        verify(userRepository, never()).save(any(User.class));
+        verify(eventPublisher, times(1)).publishEvent(any());
+    }
+
+    @Test
+    void processReportRejectsInvalidTransitionFromClosedState() {
+        UUID reportId = UUID.randomUUID();
+        UUID reporterId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        User reporter = user(reporterId, AppRole.buyer);
+        User admin = user(adminId, AppRole.admin);
+        Report report = Report.builder()
+                .id(reportId)
+                .reporter(reporter)
+                .targetId(UUID.randomUUID())
+                .targetType("PRODUCT")
+                .reason(ReportReason.fake)
+                .status(ReportStatus.resolved_upheld)
+                .build();
+
+        when(reportRepository.findById(reportId)).thenReturn(Optional.of(report));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+
+        assertThatThrownBy(() -> reportService.processReport(
+                reportId,
+                ReportProcessDTO.builder()
+                        .status(ReportStatus.resolved_dismissed)
+                        .adminNote("Không hợp lệ")
+                        .build(),
+                adminId
+        )).isInstanceOfSatisfying(AppException.class,
+                ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_REPORT_STATUS_TRANSITION));
+
+        verify(reportRepository, never()).save(any(Report.class));
     }
 
     private User user(UUID userId, AppRole role) {

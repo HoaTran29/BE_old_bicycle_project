@@ -34,7 +34,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -42,7 +44,14 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ReportServiceImpl implements ReportService {
 
-    private static final List<ReportStatus> OPEN_REPORT_STATUSES = List.of(ReportStatus.pending, ReportStatus.reviewed);
+    private static final List<ReportStatus> OPEN_REPORT_STATUSES = List.of(
+            ReportStatus.pending,
+            ReportStatus.investigating
+    );
+    private static final Set<ReportStatus> TERMINAL_REPORT_STATUSES = EnumSet.of(
+            ReportStatus.resolved_upheld,
+            ReportStatus.resolved_dismissed
+    );
     private static final int MAX_REPORT_EVIDENCE_FILES = 3;
 
     private final ReportRepository reportRepository;
@@ -115,13 +124,15 @@ public class ReportServiceImpl implements ReportService {
         User admin = userRepository.findById(adminId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
+        validateProcessTransition(report.getStatus(), processDTO.getStatus());
+
         report.setStatus(processDTO.getStatus());
         report.setAdminNote(trimToNull(processDTO.getAdminNote()));
         report.setProcessedAt(LocalDateTime.now());
         report.setProcessedBy(admin);
 
         UUID affectedUserId = null;
-        if (processDTO.getStatus() == ReportStatus.resolved) {
+        if (processDTO.getStatus() == ReportStatus.resolved_upheld) {
             affectedUserId = applySanctions(report.getTargetType(), report.getTargetId());
         }
 
@@ -145,6 +156,29 @@ public class ReportServiceImpl implements ReportService {
             return;
         }
         throw new AppException(ErrorCode.INVALID_KEY);
+    }
+
+    private void validateProcessTransition(ReportStatus currentStatus, ReportStatus nextStatus) {
+        if (currentStatus == null || nextStatus == null) {
+            throw new AppException(ErrorCode.INVALID_REPORT_STATUS_TRANSITION);
+        }
+
+        if (TERMINAL_REPORT_STATUSES.contains(currentStatus) || currentStatus == nextStatus) {
+            throw new AppException(ErrorCode.INVALID_REPORT_STATUS_TRANSITION);
+        }
+
+        boolean isValidTransition = switch (currentStatus) {
+            case pending -> nextStatus == ReportStatus.investigating
+                    || nextStatus == ReportStatus.resolved_upheld
+                    || nextStatus == ReportStatus.resolved_dismissed;
+            case investigating -> nextStatus == ReportStatus.resolved_upheld
+                    || nextStatus == ReportStatus.resolved_dismissed;
+            default -> false;
+        };
+
+        if (!isValidTransition) {
+            throw new AppException(ErrorCode.INVALID_REPORT_STATUS_TRANSITION);
+        }
     }
 
     private UUID applySanctions(String targetType, UUID targetId) {
@@ -179,8 +213,8 @@ public class ReportServiceImpl implements ReportService {
         eventPublisher.publishEvent(new NotificationEvent(
                 this,
                 report.getReporter().getId(),
-                "Báo cáo đã được xử lý",
-                "Báo cáo của bạn hiện ở trạng thái " + report.getStatus().name().toLowerCase() + ".",
+                "Báo cáo đã được cập nhật",
+                "Báo cáo của bạn hiện ở trạng thái " + mapStatusLabel(report.getStatus()) + ".",
                 NotificationType.system,
                 metadata
         ));
@@ -190,7 +224,7 @@ public class ReportServiceImpl implements ReportService {
                     this,
                     affectedUserId,
                     "Nội dung của bạn đã bị xử lý",
-                    "Hệ thống đã áp dụng xử lý sau khi một báo cáo được giải quyết.",
+                    "Hệ thống đã áp dụng xử lý sau khi một báo cáo được xác nhận vi phạm.",
                     NotificationType.system,
                     metadata
             ));
@@ -314,5 +348,14 @@ public class ReportServiceImpl implements ReportService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String mapStatusLabel(ReportStatus status) {
+        return switch (status) {
+            case pending -> "chờ xử lý";
+            case investigating -> "đang điều tra";
+            case resolved_upheld -> "xác nhận vi phạm";
+            case resolved_dismissed -> "bác bỏ";
+        };
     }
 }

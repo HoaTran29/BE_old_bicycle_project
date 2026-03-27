@@ -29,7 +29,7 @@ public interface ReportService {
     Page<ReportResponseDTO> getMyReports(UUID reporterId, Pageable pageable);
 
     /**
-     * Admin processes a report (e.g., changes status to RESOLVED and potentially bans user/hides product)
+     * Admin processes a report through the moderation flow and only applies sanctions on upheld violations.
      */
     ReportResponseDTO processReport(UUID reportId, ReportProcessDTO processDTO, UUID adminId);
 }
