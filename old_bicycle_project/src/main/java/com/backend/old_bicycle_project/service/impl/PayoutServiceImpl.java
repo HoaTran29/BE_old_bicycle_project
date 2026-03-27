@@ -5,6 +5,7 @@ import com.backend.old_bicycle_project.dto.request.PayoutCompleteRequestDTO;
 import com.backend.old_bicycle_project.dto.request.PayoutProfileUpsertRequestDTO;
 import com.backend.old_bicycle_project.dto.response.AdminPayoutResponseDTO;
 import com.backend.old_bicycle_project.dto.response.PayoutProfileResponseDTO;
+import com.backend.old_bicycle_project.entity.FinancialTransaction;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.PayoutProfile;
@@ -12,6 +13,7 @@ import com.backend.old_bicycle_project.entity.Payment;
 import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
+import com.backend.old_bicycle_project.entity.enums.FinancialTransactionEntryType;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
@@ -19,9 +21,11 @@ import com.backend.old_bicycle_project.entity.enums.PayoutProvider;
 import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutType;
 import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
+import com.backend.old_bicycle_project.entity.enums.PlatformFeeStatus;
 import com.backend.old_bicycle_project.entity.enums.RefundStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
+import com.backend.old_bicycle_project.repository.FinancialTransactionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PayoutProfileRepository;
 import com.backend.old_bicycle_project.repository.PayoutRepository;
@@ -54,6 +58,7 @@ public class PayoutServiceImpl implements PayoutService {
     private final PayoutRepository payoutRepository;
     private final RefundRequestRepository refundRequestRepository;
     private final PaymentRepository paymentRepository;
+    private final FinancialTransactionRepository financialTransactionRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
@@ -123,12 +128,14 @@ public class PayoutServiceImpl implements PayoutService {
     @Transactional
     public Payout ensureRefundPayout(RefundRequest refundRequest) {
         return payoutRepository.findByRefundRequestId(refundRequest.getId())
-                .map(existingPayout -> syncPayoutWithCurrentProfile(existingPayout, refundRequest.getRequester()))
+                .map(existingPayout -> syncRefundPayout(existingPayout, refundRequest))
                 .orElseGet(() -> createPayout(
                         refundRequest.getRequester(),
                         refundRequest.getOrder(),
                         refundRequest,
                         PayoutType.refund,
+                        refundRequest.getAmount(),
+                        BigDecimal.ZERO,
                         refundRequest.getAmount(),
                         buildTransferContent(PayoutType.refund, refundRequest.getId())
                 ));
@@ -138,13 +145,15 @@ public class PayoutServiceImpl implements PayoutService {
     @Transactional
     public Payout ensureSellerReleasePayout(Order order) {
         return payoutRepository.findByOrderIdAndType(order.getId(), PayoutType.seller_release)
-                .map(existingPayout -> syncPayoutWithCurrentProfile(existingPayout, order.getSeller()))
+                .map(existingPayout -> syncSellerReleasePayout(existingPayout, order))
                 .orElseGet(() -> createPayout(
                         order.getSeller(),
                         order,
                         null,
                         PayoutType.seller_release,
-                        resolveSellerPayoutAmount(order),
+                        resolveSellerGrossPayoutAmount(order),
+                        resolveSellerFeeDeductionAmount(order),
+                        resolveSellerNetPayoutAmount(order),
                         buildTransferContent(PayoutType.seller_release, order.getId())
                 ));
     }
@@ -177,12 +186,39 @@ public class PayoutServiceImpl implements PayoutService {
         order.setFundingStatus(OrderFundingStatus.refunded);
         order.setPaidAmount(BigDecimal.ZERO);
         order.setRemainingAmount(order.getTotalAmount());
+        if (order.getPlatformFeeTotal() != null && order.getPlatformFeeTotal().compareTo(BigDecimal.ZERO) > 0) {
+            order.setPlatformFeeStatus(PlatformFeeStatus.reversed);
+            order.setPlatformFeeRecognizedAt(null);
+            order.setPlatformFeeReversedAt(LocalDateTime.now());
+        } else {
+            order.setPlatformFeeStatus(PlatformFeeStatus.not_applicable);
+            order.setPlatformFeeRecognizedAt(null);
+            order.setPlatformFeeReversedAt(null);
+        }
         productService.hideAfterRefundCompletion(order.getProduct());
 
         refundRequestRepository.save(refundRequest);
         paymentRepository.save(payment);
         orderRepository.save(order);
         payoutRepository.save(payout);
+        recordFinancialTransaction(
+                order,
+                payment,
+                payout,
+                refundRequest,
+                FinancialTransactionEntryType.buyer_fee_refund_completed,
+                order.getBuyerFeeAmount(),
+                "Hoàn lại phần phí buyer cho refund hợp lệ."
+        );
+        recordFinancialTransaction(
+                order,
+                payment,
+                payout,
+                refundRequest,
+                FinancialTransactionEntryType.platform_fee_reversed,
+                order.getPlatformFeeTotal(),
+                "Đảo ngược doanh thu phí sàn vì refund hoàn tất."
+        );
 
         publishOrderNotification(
                 refundRequest.getRequester().getId(),
@@ -211,8 +247,35 @@ public class PayoutServiceImpl implements PayoutService {
         markPayoutCompleted(payout, currentUser, bankReference, adminNote);
 
         order.setFundingStatus(OrderFundingStatus.released);
+        if (order.getPlatformFeeTotal() != null && order.getPlatformFeeTotal().compareTo(BigDecimal.ZERO) > 0) {
+            order.setPlatformFeeStatus(PlatformFeeStatus.recognized);
+            order.setPlatformFeeRecognizedAt(LocalDateTime.now());
+            order.setPlatformFeeReversedAt(null);
+        } else {
+            order.setPlatformFeeStatus(PlatformFeeStatus.not_applicable);
+            order.setPlatformFeeRecognizedAt(null);
+            order.setPlatformFeeReversedAt(null);
+        }
         orderRepository.save(order);
         payoutRepository.save(payout);
+        recordFinancialTransaction(
+                order,
+                null,
+                payout,
+                null,
+                FinancialTransactionEntryType.seller_release_payout_completed,
+                payout.getNetAmount(),
+                "Admin hoàn tất payout cho seller."
+        );
+        recordFinancialTransaction(
+                order,
+                null,
+                payout,
+                null,
+                FinancialTransactionEntryType.platform_fee_recognized,
+                order.getPlatformFeeTotal(),
+                "Ghi nhận doanh thu phí sàn khi payout seller hoàn tất."
+        );
 
         publishOrderNotification(
                 order.getSeller().getId(),
@@ -253,6 +316,22 @@ public class PayoutServiceImpl implements PayoutService {
         return payoutRepository.save(payout);
     }
 
+    private Payout syncRefundPayout(Payout payout, RefundRequest refundRequest) {
+        payout.setAmount(refundRequest.getAmount());
+        payout.setGrossAmount(refundRequest.getAmount());
+        payout.setFeeDeductionAmount(BigDecimal.ZERO);
+        payout.setNetAmount(refundRequest.getAmount());
+        return syncPayoutWithCurrentProfile(payout, refundRequest.getRequester());
+    }
+
+    private Payout syncSellerReleasePayout(Payout payout, Order order) {
+        payout.setAmount(resolveSellerNetPayoutAmount(order));
+        payout.setGrossAmount(resolveSellerGrossPayoutAmount(order));
+        payout.setFeeDeductionAmount(resolveSellerFeeDeductionAmount(order));
+        payout.setNetAmount(resolveSellerNetPayoutAmount(order));
+        return syncPayoutWithCurrentProfile(payout, order.getSeller());
+    }
+
     private void hydratePendingPayouts(PayoutProfile profile) {
         List<Payout> pendingPayouts = payoutRepository.findByRecipientIdAndStatusOrderByCreatedAtAsc(
                 profile.getUser().getId(),
@@ -272,7 +351,9 @@ public class PayoutServiceImpl implements PayoutService {
             Order order,
             RefundRequest refundRequest,
             PayoutType type,
-            BigDecimal amount,
+            BigDecimal grossAmount,
+            BigDecimal feeDeductionAmount,
+            BigDecimal netAmount,
             String transferContent
     ) {
         Payout payout = Payout.builder()
@@ -281,7 +362,10 @@ public class PayoutServiceImpl implements PayoutService {
                 .refundRequest(refundRequest)
                 .type(type)
                 .provider(PayoutProvider.vietqr_manual)
-                .amount(amount)
+                .amount(netAmount)
+                .grossAmount(grossAmount)
+                .feeDeductionAmount(feeDeductionAmount)
+                .netAmount(netAmount)
                 .transferContent(transferContent)
                 .status(PayoutStatus.profile_required)
                 .build();
@@ -470,6 +554,9 @@ public class PayoutServiceImpl implements PayoutService {
                 .status(payout.getStatus())
                 .provider(payout.getProvider())
                 .amount(payout.getAmount())
+                .grossAmount(payout.getGrossAmount() != null ? payout.getGrossAmount() : payout.getAmount())
+                .feeDeductionAmount(payout.getFeeDeductionAmount() != null ? payout.getFeeDeductionAmount() : BigDecimal.ZERO)
+                .netAmount(payout.getNetAmount() != null ? payout.getNetAmount() : payout.getAmount())
                 .recipientId(payout.getRecipient().getId())
                 .recipientName(payout.getRecipient().getFullName())
                 .bankCode(payout.getBankCode())
@@ -497,7 +584,10 @@ public class PayoutServiceImpl implements PayoutService {
                 .build();
     }
 
-    private BigDecimal resolveSellerPayoutAmount(Order order) {
+    private BigDecimal resolveSellerGrossPayoutAmount(Order order) {
+        if (order.getSellerGrossPayoutAmount() != null && order.getSellerGrossPayoutAmount().compareTo(BigDecimal.ZERO) > 0) {
+            return order.getSellerGrossPayoutAmount();
+        }
         if (order.getRequiredUpfrontAmount() != null && order.getRequiredUpfrontAmount().compareTo(BigDecimal.ZERO) > 0) {
             return order.getRequiredUpfrontAmount();
         }
@@ -508,6 +598,44 @@ public class PayoutServiceImpl implements PayoutService {
             return order.getPaidAmount();
         }
         throw new AppException(ErrorCode.PAYOUT_NOT_READY);
+    }
+
+    private BigDecimal resolveSellerFeeDeductionAmount(Order order) {
+        return order.getSellerFeeAmount() != null ? order.getSellerFeeAmount() : BigDecimal.ZERO;
+    }
+
+    private BigDecimal resolveSellerNetPayoutAmount(Order order) {
+        if (order.getSellerNetPayoutAmount() != null && order.getSellerNetPayoutAmount().compareTo(BigDecimal.ZERO) > 0) {
+            return order.getSellerNetPayoutAmount();
+        }
+        BigDecimal grossAmount = resolveSellerGrossPayoutAmount(order);
+        BigDecimal feeDeductionAmount = resolveSellerFeeDeductionAmount(order);
+        BigDecimal netAmount = grossAmount.subtract(feeDeductionAmount);
+        return netAmount.compareTo(BigDecimal.ZERO) > 0 ? netAmount : BigDecimal.ZERO;
+    }
+
+    private void recordFinancialTransaction(
+            Order order,
+            Payment payment,
+            Payout payout,
+            RefundRequest refundRequest,
+            FinancialTransactionEntryType entryType,
+            BigDecimal amount,
+            String note
+    ) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        financialTransactionRepository.save(FinancialTransaction.builder()
+                .order(order)
+                .payment(payment)
+                .payout(payout)
+                .refundRequest(refundRequest)
+                .entryType(entryType)
+                .amount(amount)
+                .note(note)
+                .build());
     }
 
     private String buildTransferContent(PayoutType type, UUID referenceId) {

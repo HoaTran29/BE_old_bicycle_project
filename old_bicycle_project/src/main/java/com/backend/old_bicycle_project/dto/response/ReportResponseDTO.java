@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -22,6 +23,7 @@ public class ReportResponseDTO {
     private String targetType;
     private ReportReason reason;
     private String description;
+    private List<ReportEvidenceFileResponseDTO> evidenceFiles;
     private ReportStatus status;
     private String adminNote;
     private UUID processedById;

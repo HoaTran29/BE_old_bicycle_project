@@ -68,6 +68,18 @@ public class Payout {
     @Column(name = "amount", nullable = false)
     private BigDecimal amount;
 
+    @Builder.Default
+    @Column(name = "gross_amount", nullable = false)
+    private BigDecimal grossAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "fee_deduction_amount", nullable = false)
+    private BigDecimal feeDeductionAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "net_amount", nullable = false)
+    private BigDecimal netAmount = BigDecimal.ZERO;
+
     @Column(name = "bank_code")
     private String bankCode;
 

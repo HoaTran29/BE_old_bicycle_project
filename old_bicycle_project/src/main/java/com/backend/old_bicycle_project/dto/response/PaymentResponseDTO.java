@@ -21,6 +21,8 @@ public class PaymentResponseDTO {
     private UUID id;
     private UUID orderId;
     private BigDecimal amount;
+    private BigDecimal protectedAmount;
+    private BigDecimal buyerFeeAmount;
     private PaymentGateway gateway;
     private PaymentMethod method;
     private PaymentPhase phase;

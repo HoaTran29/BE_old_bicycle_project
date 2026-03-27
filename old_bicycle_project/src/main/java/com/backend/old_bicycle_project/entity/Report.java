@@ -9,6 +9,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -45,6 +47,11 @@ public class Report {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Builder.Default
+    @OneToMany(mappedBy = "report", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC, createdAt ASC")
+    private List<ReportFile> evidenceFiles = new ArrayList<>();
+
     @Column(name = "admin_note", columnDefinition = "TEXT")
     private String adminNote;
 
@@ -60,4 +67,9 @@ public class Report {
 
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
+
+    public void addEvidenceFile(ReportFile file) {
+        evidenceFiles.add(file);
+        file.setReport(this);
+    }
 }

@@ -2,8 +2,9 @@ package com.backend.old_bicycle_project.entity.enums;
 
 public enum ReportStatus {
     pending("pending"),
-    reviewed("reviewed"),
-    resolved("resolved");
+    investigating("investigating"),
+    resolved_upheld("resolved_upheld"),
+    resolved_dismissed("resolved_dismissed");
 
     private final String status;
 

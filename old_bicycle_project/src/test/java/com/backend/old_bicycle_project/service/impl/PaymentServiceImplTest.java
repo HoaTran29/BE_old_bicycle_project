@@ -19,6 +19,7 @@ import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
 import com.backend.old_bicycle_project.entity.enums.RefundStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
+import com.backend.old_bicycle_project.repository.FinancialTransactionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
@@ -62,6 +63,9 @@ class PaymentServiceImplTest {
     private RefundRequestRepository refundRequestRepository;
 
     @Mock
+    private FinancialTransactionRepository financialTransactionRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @Mock
@@ -86,6 +90,7 @@ class PaymentServiceImplTest {
                 paymentRepository,
                 orderRepository,
                 refundRequestRepository,
+                financialTransactionRepository,
                 properties,
                 new ObjectMapper(),
                 eventPublisher,

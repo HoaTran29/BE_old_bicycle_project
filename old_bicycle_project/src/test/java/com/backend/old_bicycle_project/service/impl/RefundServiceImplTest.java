@@ -6,8 +6,8 @@ import com.backend.old_bicycle_project.dto.response.AdminRefundResponseDTO;
 import com.backend.old_bicycle_project.dto.response.OrderEvidenceSubmissionResponseDTO;
 import com.backend.old_bicycle_project.dto.response.RefundResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
-import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Payment;
+import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
@@ -21,19 +21,21 @@ import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutType;
 import com.backend.old_bicycle_project.entity.enums.RefundStatus;
+import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
-import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.RefundRequestRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.PayoutService;
+import com.backend.old_bicycle_project.service.StorageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -41,9 +43,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -76,6 +77,9 @@ class RefundServiceImplTest {
     @Mock
     private OrderEvidenceService orderEvidenceService;
 
+    @Mock
+    private StorageService storageService;
+
     @InjectMocks
     private RefundServiceImpl refundService;
 
@@ -94,14 +98,21 @@ class RefundServiceImplTest {
         when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(admin));
         when(refundRequestRepository.save(any(RefundRequest.class))).thenAnswer(invocation -> {
             RefundRequest refundRequest = invocation.getArgument(0);
-            refundRequest.setId(UUID.randomUUID());
+            if (refundRequest.getId() == null) {
+                refundRequest.setId(UUID.randomUUID());
+            }
             return refundRequest;
         });
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        RefundResponseDTO response = refundService.requestRefund(order.getId(), buyer, RefundCreateRequestDTO.builder()
-                .reason("Seller description does not match actual bicycle condition")
-                .build());
+        RefundResponseDTO response = refundService.requestRefund(
+                order.getId(),
+                buyer,
+                RefundCreateRequestDTO.builder()
+                        .reason("Seller description does not match actual bicycle condition")
+                        .build(),
+                List.of()
+        );
 
         assertThat(response.getStatus()).isEqualTo(RefundStatus.pending);
         assertThat(response.getAmount()).isEqualByComparingTo("2000000");
@@ -123,17 +134,68 @@ class RefundServiceImplTest {
                 .thenReturn(Optional.of(payment));
         when(refundRequestRepository.save(any(RefundRequest.class))).thenAnswer(invocation -> {
             RefundRequest refundRequest = invocation.getArgument(0);
-            refundRequest.setId(UUID.randomUUID());
+            if (refundRequest.getId() == null) {
+                refundRequest.setId(UUID.randomUUID());
+            }
             return refundRequest;
         });
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        RefundResponseDTO response = refundService.requestRefund(order.getId(), buyer, RefundCreateRequestDTO.builder()
-                .reason("Xe nhận được không đúng tình trạng đã cam kết")
-                .build());
+        RefundResponseDTO response = refundService.requestRefund(
+                order.getId(),
+                buyer,
+                RefundCreateRequestDTO.builder()
+                        .reason("Xe nhận được không đúng tình trạng đã cam kết")
+                        .build(),
+                List.of()
+        );
 
         assertThat(response.getStatus()).isEqualTo(RefundStatus.pending);
         assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.refund_pending);
+    }
+
+    @Test
+    void requestRefundPersistsEvidenceFilesWhenBuyerUploadsImages() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        User admin = user(AppRole.admin, "admin@test.dev");
+        Order order = depositedOrder(buyer);
+        Payment payment = successfulUpfrontPayment(order);
+        MockMultipartFile evidence = new MockMultipartFile(
+                "files",
+                "frame-crack.jpg",
+                "image/jpeg",
+                "fake-image".getBytes()
+        );
+
+        when(orderRepository.findByIdAndBuyerId(order.getId(), buyer.getId())).thenReturn(Optional.of(order));
+        when(refundRequestRepository.findFirstByOrderIdAndStatusOrderByCreatedAtDesc(order.getId(), RefundStatus.pending))
+                .thenReturn(Optional.empty());
+        when(paymentRepository.findFirstByOrderIdAndPhaseOrderByCreatedAtDesc(order.getId(), PaymentPhase.upfront))
+                .thenReturn(Optional.of(payment));
+        when(userRepository.findByRole(AppRole.admin)).thenReturn(List.of(admin));
+        when(storageService.uploadFile(any(), anyString())).thenReturn("https://cdn.example/refunds/frame-crack.jpg");
+        when(refundRequestRepository.save(any(RefundRequest.class))).thenAnswer(invocation -> {
+            RefundRequest refundRequest = invocation.getArgument(0);
+            if (refundRequest.getId() == null) {
+                refundRequest.setId(UUID.randomUUID());
+            }
+            return refundRequest;
+        });
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RefundResponseDTO response = refundService.requestRefund(
+                order.getId(),
+                buyer,
+                RefundCreateRequestDTO.builder()
+                        .reason("Buyer discovered a hidden frame crack")
+                        .evidenceNote("Photo taken immediately after opening the package")
+                        .build(),
+                List.of(evidence)
+        );
+
+        assertThat(response.getEvidenceFiles()).hasSize(1);
+        assertThat(response.getEvidenceFiles().getFirst().getFileName()).isEqualTo("frame-crack.jpg");
+        verify(storageService).uploadFile(any(), anyString());
     }
 
     @Test
@@ -164,10 +226,14 @@ class RefundServiceImplTest {
                 .recipient(buyer)
                 .build());
 
-        RefundResponseDTO response = refundService.reviewRefund(refundRequest.getId(), admin, RefundReviewRequestDTO.builder()
-                .status(RefundStatus.approved)
-                .adminNote("Approved and waiting for manual payout")
-                .build());
+        RefundResponseDTO response = refundService.reviewRefund(
+                refundRequest.getId(),
+                admin,
+                RefundReviewRequestDTO.builder()
+                        .status(RefundStatus.approved)
+                        .adminNote("Approved and waiting for manual payout")
+                        .build()
+        );
 
         assertThat(response.getStatus()).isEqualTo(RefundStatus.approved);
         assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.refund_pending_transfer);
@@ -209,11 +275,15 @@ class RefundServiceImplTest {
                     return payout;
                 });
 
-        RefundResponseDTO response = refundService.reviewRefund(refundRequest.getId(), admin, RefundReviewRequestDTO.builder()
-                .status(RefundStatus.completed)
-                .adminNote("Manual refund completed through bank transfer")
-                .refundReference("RF-20260312-01")
-                .build());
+        RefundResponseDTO response = refundService.reviewRefund(
+                refundRequest.getId(),
+                admin,
+                RefundReviewRequestDTO.builder()
+                        .status(RefundStatus.completed)
+                        .adminNote("Manual refund completed through bank transfer")
+                        .refundReference("RF-20260312-01")
+                        .build()
+        );
 
         assertThat(response.getStatus()).isEqualTo(RefundStatus.completed);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.refunded);

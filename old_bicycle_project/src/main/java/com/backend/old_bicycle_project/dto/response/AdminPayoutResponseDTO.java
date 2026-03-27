@@ -24,6 +24,9 @@ public class AdminPayoutResponseDTO {
     private PayoutStatus status;
     private PayoutProvider provider;
     private BigDecimal amount;
+    private BigDecimal grossAmount;
+    private BigDecimal feeDeductionAmount;
+    private BigDecimal netAmount;
     private UUID recipientId;
     private String recipientName;
     private String bankCode;
