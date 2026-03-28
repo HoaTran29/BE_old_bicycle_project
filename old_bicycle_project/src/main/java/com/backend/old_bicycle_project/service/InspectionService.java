@@ -34,7 +34,8 @@ public interface InspectionService {
     InspectionResponseDTO uploadInspectionReport(UUID productId, UUID inspectorId, MultipartFile reportFile);
 
     /**
-     * Get inspection details by product ID.
+     * Get internal inspection details by product ID for admin/inspector tooling.
+     *
      * @param productId UUID of the product
      * @return InspectionResponseDTO
      */

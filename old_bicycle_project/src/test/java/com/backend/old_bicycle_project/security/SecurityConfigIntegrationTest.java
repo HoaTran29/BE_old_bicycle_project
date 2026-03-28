@@ -166,6 +166,12 @@ class SecurityConfigIntegrationTest {
     }
 
     @Test
+    void anonymousUserCannotAccessInspectionDetail() throws Exception {
+        mockMvc.perform(get("/api/inspections/product/11111111-1111-1111-1111-111111111111"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void anonymousUserCanAccessPublicGroupsets() throws Exception {
         when(groupsetService.getAll()).thenReturn(List.of());
 
@@ -185,6 +191,13 @@ class SecurityConfigIntegrationTest {
     @WithMockUser(roles = "BUYER")
     void buyerCannotAccessInspectionRequests() throws Exception {
         mockMvc.perform(get("/api/inspections/requests"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "BUYER")
+    void buyerCannotAccessInspectionDetail() throws Exception {
+        mockMvc.perform(get("/api/inspections/product/11111111-1111-1111-1111-111111111111"))
                 .andExpect(status().isForbidden());
     }
 
@@ -222,6 +235,19 @@ class SecurityConfigIntegrationTest {
         );
 
         mockMvc.perform(get("/api/inspections/product-context/11111111-1111-1111-1111-111111111111"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "INSPECTOR")
+    void inspectorCanAccessInspectionDetail() throws Exception {
+        when(inspectionService.getInspectionByProductId(any()))
+                .thenReturn(com.backend.old_bicycle_project.dto.response.InspectionResponseDTO.builder()
+                        .id(UUID.randomUUID())
+                        .productId(UUID.randomUUID())
+                        .build());
+
+        mockMvc.perform(get("/api/inspections/product/11111111-1111-1111-1111-111111111111"))
                 .andExpect(status().isOk());
     }
 

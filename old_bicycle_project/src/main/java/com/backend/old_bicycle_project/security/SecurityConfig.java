@@ -113,9 +113,9 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.GET,
                                                                 "/api/inspections/dashboard",
                                                                 "/api/inspections/requests",
-                                                                "/api/inspections/history")
+                                                                "/api/inspections/history",
+                                                                "/api/inspections/product/*")
                                                 .hasAnyRole("INSPECTOR", "ADMIN")
-                                                .requestMatchers(HttpMethod.GET, "/api/inspections/**").permitAll()
 
                                                 // ===== Seller =====
                                                 .requestMatchers(HttpMethod.POST, "/api/products")

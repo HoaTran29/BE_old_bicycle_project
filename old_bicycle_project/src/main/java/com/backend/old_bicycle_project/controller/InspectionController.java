@@ -59,6 +59,7 @@ public class InspectionController {
     }
 
     @GetMapping("/product/{productId}")
+    @PreAuthorize("hasAnyRole('INSPECTOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<InspectionResponseDTO>> getInspectionByProductId(
             @PathVariable UUID productId) {
         

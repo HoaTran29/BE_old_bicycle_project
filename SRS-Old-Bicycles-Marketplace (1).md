@@ -7,8 +7,8 @@
 |**Field**|**Value**|
 | :- | :- |
 |**Project Name**|Old Bicycles Marketplace|
-|**Document Version**|4\.2|
-|**Date**|2026-03-24|
+|**Document Version**|4\.3|
+|**Date**|2026-03-28|
 |**Author**|Development Team|
 |**Status**|Final|
 ## **Revision History**
@@ -21,6 +21,7 @@
 |4\.0|2026-03-20|Dev Team|Synced mandatory inspection before public, manual payout/refund flow, seller reply review, and order evidence uploads|
 |4\.1|2026-03-24|Dev Team|Synced groupset, size chart, payment timeout/expiry, and AI assistant mức 2 qua Spring Boot + Vercel AI Gateway|
 |4\.2|2026-03-24|Dev Team|Final audit sync with shipped scope, actual integrations, auth flow, messaging scope, admin payout management, and runtime database schema|
+|4\.3|2026-03-28|Dev Team|Hardened inspection detail access: public users read inspection summary via product detail, while raw inspection detail endpoint is restricted to admin/inspector tooling|
 
 
 # **1. Introduction**
@@ -318,7 +319,7 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |API-004|/orders/\*|Order/deposit management, delivery evidence, confirm received|
 |API-005|/payments/\*|Payment request, payment instructions, SePay webhook|
 |API-006|/orders/{orderId}/refunds & /admin/refunds/\*|Refund request and admin review|
-|API-007|/inspections/\*|Inspection queue, evaluate, report upload, dashboard/history|
+|API-007|/inspections/\*|Inspection queue, internal inspection detail, evaluate, report upload, dashboard/history; public inspection summary is exposed via product detail instead of raw inspection detail endpoint|
 |API-008|/notifications/\*|Notification list, unread count, mark read/read all|
 |API-009|/reviews/\* & /users/{sellerId}/reviews|Buyer review and seller reply|
 |API-010|/reports/\*|Report submit, my reports, admin report processing|
@@ -518,6 +519,11 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 |**ID**|FR-SELL-006|
 |**Description**|Seller shall có thể theo dõi trạng thái kiểm định của tin đăng và chỉnh sửa/gửi lại tin khi inspection failed|
 |**Priority**|Should|
+
+**Access Note:**
+
+- Seller và Buyer xem trạng thái/summary kiểm định qua product detail
+- Endpoint raw inspection detail chỉ dành cho Admin/Inspector để tránh lộ ghi chú kỹ thuật nội bộ và metadata kiểm định
 
 
 #### **FR-SELL-007: Reply to Review**
