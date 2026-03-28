@@ -4,6 +4,7 @@ import com.backend.old_bicycle_project.dto.product.ProductFilterRequest;
 import com.backend.old_bicycle_project.entity.Inspection;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Product;
+import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
 import com.backend.old_bicycle_project.entity.enums.OrderStatus;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import jakarta.persistence.criteria.Predicate;
@@ -22,8 +23,7 @@ public class ProductSpecification {
             ProductStatus.active,
             ProductStatus.inspected_passed
     );
-    private static final List<OrderStatus> ACTIVE_TRANSACTION_STATUSES = List.of(
-            OrderStatus.pending,
+    private static final List<OrderStatus> EXCLUSIVE_LOCK_STATUSES = List.of(
             OrderStatus.deposited,
             OrderStatus.awaiting_buyer_confirmation
     );
@@ -163,10 +163,17 @@ public class ProductSpecification {
     ) {
         Subquery<Long> orderSubquery = query.subquery(Long.class);
         Root<Order> orderRoot = orderSubquery.from(Order.class);
+        Predicate acceptedOrderAwaitingPayment = cb.and(
+                cb.equal(orderRoot.get("status"), OrderStatus.pending),
+                cb.equal(orderRoot.get("fundingStatus"), OrderFundingStatus.awaiting_payment)
+        );
         orderSubquery.select(cb.literal(1L))
                 .where(
                         cb.equal(orderRoot.get("product").get("id"), root.get("id")),
-                        orderRoot.get("status").in(ACTIVE_TRANSACTION_STATUSES)
+                        cb.or(
+                                acceptedOrderAwaitingPayment,
+                                orderRoot.get("status").in(EXCLUSIVE_LOCK_STATUSES)
+                        )
                 );
         return cb.exists(orderSubquery);
     }

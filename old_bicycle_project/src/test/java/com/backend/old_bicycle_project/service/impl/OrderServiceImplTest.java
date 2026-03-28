@@ -92,8 +92,8 @@ class OrderServiceImplTest {
                 .paymentMethod(PaymentMethod.transfer)
                 .build();
 
-        when(productRepository.findById(product.getId())).thenReturn(java.util.Optional.of(product));
-        when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), any(List.class))).thenReturn(false);
+        when(productRepository.findByIdForUpdate(product.getId())).thenReturn(java.util.Optional.of(product));
+        when(orderRepository.existsExclusiveOrderLockByProductId(product.getId())).thenReturn(false);
         when(reviewRepository.existsByOrderId(any(UUID.class))).thenReturn(false);
         when(orderEvidenceService.getEvidenceByOrderId(any(UUID.class))).thenReturn(java.util.Collections.emptyMap());
         when(platformFeeService.calculate(
@@ -155,11 +155,67 @@ class OrderServiceImplTest {
                 .build();
 
         when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
+        when(productRepository.findByIdForUpdate(product.getId())).thenReturn(java.util.Optional.of(product));
+        when(orderRepository.existsExclusiveOrderLockByProductId(product.getId())).thenReturn(false);
         when(payoutService.hasCompleteProfile(seller)).thenReturn(false);
 
         assertThatThrownBy(() -> orderService.acceptOrder(order.getId(), seller))
                 .isInstanceOfSatisfying(AppException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PAYOUT_PROFILE_REQUIRED));
+    }
+
+    @Test
+    void acceptOrderRejectsOtherPendingRequestsForTheSameListing() {
+        User seller = user(AppRole.seller, "seller@test.dev");
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        User anotherBuyer = user(AppRole.buyer, "buyer2@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Specialized Allez")
+                .status(ProductStatus.active)
+                .build();
+        Order acceptedOrder = Order.builder()
+                .id(UUID.randomUUID())
+                .buyer(buyer)
+                .seller(seller)
+                .product(product)
+                .status(OrderStatus.pending)
+                .fundingStatus(OrderFundingStatus.unpaid)
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+        Order competingOrder = Order.builder()
+                .id(UUID.randomUUID())
+                .buyer(anotherBuyer)
+                .seller(seller)
+                .product(product)
+                .status(OrderStatus.pending)
+                .fundingStatus(OrderFundingStatus.unpaid)
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+
+        when(orderRepository.findById(acceptedOrder.getId())).thenReturn(java.util.Optional.of(acceptedOrder));
+        when(productRepository.findByIdForUpdate(product.getId())).thenReturn(java.util.Optional.of(product));
+        when(orderRepository.existsExclusiveOrderLockByProductId(product.getId())).thenReturn(false);
+        when(payoutService.hasCompleteProfile(seller)).thenReturn(true);
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(orderRepository.findByProductIdAndStatusAndFundingStatusOrderByCreatedAtAsc(
+                product.getId(),
+                OrderStatus.pending,
+                OrderFundingStatus.unpaid
+        )).thenReturn(List.of(acceptedOrder, competingOrder));
+        when(orderRepository.saveAll(any(List.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(reviewRepository.existsByOrderId(acceptedOrder.getId())).thenReturn(false);
+        when(orderEvidenceService.getEvidenceByOrderId(acceptedOrder.getId())).thenReturn(java.util.Collections.emptyMap());
+
+        OrderResponseDTO response = orderService.acceptOrder(acceptedOrder.getId(), seller);
+
+        assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.awaiting_payment);
+        assertThat(response.getAcceptedAt()).isNotNull();
+        assertThat(response.getPaymentDeadline()).isNotNull();
+        assertThat(competingOrder.getStatus()).isEqualTo(OrderStatus.cancelled);
+        assertThat(competingOrder.getCancelReason()).isEqualTo(OrderCancelReason.seller_rejected);
+        assertThat(competingOrder.getCancelledAt()).isNotNull();
     }
 
     @Test
@@ -327,6 +383,7 @@ class OrderServiceImplTest {
                 .status(OrderStatus.pending)
                 .fundingStatus(OrderFundingStatus.awaiting_payment)
                 .paymentMethod(PaymentMethod.cash)
+                .acceptedAt(java.time.LocalDateTime.now().minusHours(1))
                 .paymentDeadline(java.time.LocalDateTime.now().minusMinutes(1))
                 .build();
 
@@ -374,6 +431,38 @@ class OrderServiceImplTest {
         assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.unpaid);
         assertThat(response.getCancelReason()).isEqualTo(OrderCancelReason.seller_cancelled);
         assertThat(response.getCancelledAt()).isNotNull();
+    }
+
+    @Test
+    void cancelOrderMarksUnacceptedSellerReviewRequestAsSellerRejected() {
+        User seller = user(AppRole.seller, "seller@test.dev");
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Pending offer")
+                .status(ProductStatus.active)
+                .build();
+        Order order = Order.builder()
+                .id(UUID.randomUUID())
+                .buyer(buyer)
+                .seller(seller)
+                .product(product)
+                .status(OrderStatus.pending)
+                .fundingStatus(OrderFundingStatus.unpaid)
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+
+        when(orderRepository.findById(order.getId())).thenReturn(java.util.Optional.of(order));
+        when(reviewRepository.existsByOrderId(order.getId())).thenReturn(false);
+        when(orderEvidenceService.getEvidenceByOrderId(order.getId())).thenReturn(java.util.Collections.emptyMap());
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponseDTO response = orderService.cancelOrder(order.getId(), seller);
+
+        assertThat(response.getStatus()).isEqualTo(OrderStatus.cancelled);
+        assertThat(response.getCancelReason()).isEqualTo(OrderCancelReason.seller_rejected);
+        assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.unpaid);
     }
 
     private User user(AppRole role, String email) {

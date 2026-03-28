@@ -20,12 +20,14 @@ class ProductResponseJsonTest {
                         .displayOrder(0)
                         .build()))
                 .lockedForTransaction(false)
+                .sellerActionLocked(true)
                 .build();
 
         String json = objectMapper.writeValueAsString(response);
 
         assertThat(json).contains("\"isVerified\":true");
         assertThat(json).contains("\"isPrimary\":true");
+        assertThat(json).contains("\"sellerActionLocked\":true");
         assertThat(json).doesNotContain("\"verified\":true");
         assertThat(json).doesNotContain("\"primary\":true");
     }

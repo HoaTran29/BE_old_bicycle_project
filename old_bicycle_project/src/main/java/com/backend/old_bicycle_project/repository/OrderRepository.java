@@ -26,6 +26,36 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
             @Param("statuses") Collection<OrderStatus> statuses
     );
 
+    @Query(value = """
+            select exists(
+                select 1
+                from orders o
+                where o.product_id = :productId
+                  and (
+                    (o.status = 'pending' and o.funding_status = 'awaiting_payment')
+                    or o.status in ('deposited', 'awaiting_buyer_confirmation')
+                  )
+            )
+            """, nativeQuery = true)
+    boolean existsExclusiveOrderLockByProductId(@Param("productId") UUID productId);
+
+    @Query(value = """
+            select distinct o.product_id
+            from orders o
+            where o.product_id in (:productIds)
+              and (
+                (o.status = 'pending' and o.funding_status = 'awaiting_payment')
+                or o.status in ('deposited', 'awaiting_buyer_confirmation')
+              )
+            """, nativeQuery = true)
+    List<UUID> findProductIdsWithExclusiveOrderLock(@Param("productIds") Collection<UUID> productIds);
+
+    List<Order> findByProductIdAndStatusAndFundingStatusOrderByCreatedAtAsc(
+            UUID productId,
+            OrderStatus status,
+            OrderFundingStatus fundingStatus
+    );
+
     List<Order> findByBuyerIdOrSellerIdOrderByCreatedAtDesc(UUID buyerId, UUID sellerId);
 
     long countByBuyerId(UUID buyerId);

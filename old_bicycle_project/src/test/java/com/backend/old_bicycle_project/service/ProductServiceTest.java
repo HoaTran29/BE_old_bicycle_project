@@ -206,12 +206,40 @@ class ProductServiceTest {
                 .thenReturn(new PageImpl<>(List.of(product)));
         when(inspectionRepository.findByProductIdIn(anyCollection())).thenReturn(List.of());
         when(productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(anyCollection())).thenReturn(List.of());
+        when(orderRepository.findProductIdsWithExclusiveOrderLock(anyCollection())).thenReturn(List.of());
         when(orderRepository.findLockedProductIdsByProductIdsAndStatuses(anyCollection(), anyCollection())).thenReturn(List.of());
 
         var page = productService.getMyProducts(seller, 0, 12);
 
         assertThat(page.getContent()).hasSize(1);
         assertThat(page.getContent().getFirst().getId()).isEqualTo(product.getId());
+    }
+
+    @Test
+    void getMyProductsKeepsListingPublicButLocksSellerActionsWhenOnlyPendingRequestsExist() {
+        User seller = seller();
+        Product product = product(seller, ProductStatus.active);
+        Inspection inspection = Inspection.builder()
+                .id(UUID.randomUUID())
+                .product(product)
+                .passed(true)
+                .validUntil(LocalDateTime.now().plusDays(2))
+                .build();
+
+        when(productRepository.findBySellerIdAndDeletedAtIsNull(eq(seller.getId()), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new PageImpl<>(List.of(product)));
+        when(inspectionRepository.findByProductIdIn(anyCollection())).thenReturn(List.of(inspection));
+        when(productImageRepository.findByProductIdInOrderByProductIdAscDisplayOrderAsc(anyCollection())).thenReturn(List.of());
+        when(orderRepository.findProductIdsWithExclusiveOrderLock(anyCollection())).thenReturn(List.of());
+        when(orderRepository.findLockedProductIdsByProductIdsAndStatuses(anyCollection(), anyCollection()))
+                .thenReturn(List.of(product.getId()));
+
+        var page = productService.getMyProducts(seller, 0, 12);
+
+        ProductResponse response = page.getContent().getFirst();
+        assertThat(response.isLockedForTransaction()).isFalse();
+        assertThat(response.isSellerActionLocked()).isTrue();
+        assertThat(response.isVerified()).isTrue();
     }
 
     @Test
@@ -393,6 +421,7 @@ class ProductServiceTest {
 
         when(productRepository.findByIdAndDeletedAtIsNull(product.getId())).thenReturn(Optional.of(product));
         when(inspectionRepository.findByProductId(product.getId())).thenReturn(Optional.of(inspection));
+        when(orderRepository.existsExclusiveOrderLockByProductId(product.getId())).thenReturn(true);
         when(orderRepository.existsByProductIdAndStatusIn(eq(product.getId()), anyList())).thenReturn(true);
 
         ProductResponse response = productService.getById(product.getId());

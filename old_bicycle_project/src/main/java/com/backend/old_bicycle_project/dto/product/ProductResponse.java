@@ -43,6 +43,7 @@ public class ProductResponse {
     @Setter(onMethod_ = @JsonProperty("isVerified"))
     private boolean isVerified;
     private boolean lockedForTransaction;
+    private boolean sellerActionLocked;
     private InspectionInfo inspection;
 
     @Data

@@ -59,7 +59,7 @@ public class ProductService {
             ProductStatus.active,
             ProductStatus.inspected_passed
     );
-    private static final List<OrderStatus> ACTIVE_TRANSACTION_STATUSES = List.of(
+    private static final List<OrderStatus> OPEN_ORDER_STATUSES = List.of(
             OrderStatus.pending,
             OrderStatus.deposited,
             OrderStatus.awaiting_buyer_confirmation
@@ -117,7 +117,14 @@ public class ProductService {
                 .build()
                 : null;
 
-        return buildProductResponse(product, inspection, hasActiveTransaction(product.getId()), imageInfos, sellerInfo);
+        return buildProductResponse(
+                product,
+                inspection,
+                hasExclusiveTransactionLock(product.getId()),
+                hasSellerActionLock(product.getId()),
+                imageInfos,
+                sellerInfo
+        );
     }
 
     public ProductResponse getMineById(UUID id, User currentUser) {
@@ -352,7 +359,14 @@ public class ProductService {
                 : null;
 
         Inspection inspection = inspectionRepository.findByProductId(product.getId()).orElse(null);
-        return buildProductResponse(product, inspection, hasActiveTransaction(product.getId()), imageInfos, sellerInfo);
+        return buildProductResponse(
+                product,
+                inspection,
+                hasExclusiveTransactionLock(product.getId()),
+                hasSellerActionLock(product.getId()),
+                imageInfos,
+                sellerInfo
+        );
     }
 
     private Page<ProductResponse> mapProductPage(Page<Product> productsPage) {
@@ -380,7 +394,10 @@ public class ProductService {
                 ));
 
         HashSet<UUID> lockedProductIds = new HashSet<>(
-                orderRepository.findLockedProductIdsByProductIdsAndStatuses(productIds, ACTIVE_TRANSACTION_STATUSES)
+                orderRepository.findProductIdsWithExclusiveOrderLock(productIds)
+        );
+        HashSet<UUID> sellerActionLockedProductIds = new HashSet<>(
+                orderRepository.findLockedProductIdsByProductIdsAndStatuses(productIds, OPEN_ORDER_STATUSES)
         );
 
         return productsPage.map(product -> {
@@ -408,6 +425,7 @@ public class ProductService {
                     product,
                     inspectionsByProductId.get(product.getId()),
                     lockedProductIds.contains(product.getId()),
+                    sellerActionLockedProductIds.contains(product.getId()),
                     imageInfos,
                     sellerInfo
             );
@@ -418,6 +436,7 @@ public class ProductService {
             Product product,
             Inspection inspection,
             boolean lockedForTransaction,
+            boolean sellerActionLocked,
             List<ProductResponse.ImageInfo> imageInfos,
             ProductResponse.SellerInfo sellerInfo
     ) {
@@ -458,6 +477,7 @@ public class ProductService {
                 .images(imageInfos)
                 .isVerified(verified)
                 .lockedForTransaction(lockedForTransaction)
+                .sellerActionLocked(sellerActionLocked)
                 .inspection(inspectionInfo)
                 .build();
     }
@@ -513,7 +533,7 @@ public class ProductService {
         if (product.getStatus() == ProductStatus.sold) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
-        if (orderRepository.existsByProductIdAndStatusIn(product.getId(), ACTIVE_TRANSACTION_STATUSES)) {
+        if (orderRepository.existsByProductIdAndStatusIn(product.getId(), OPEN_ORDER_STATUSES)) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
     }
@@ -582,8 +602,12 @@ public class ProductService {
                 && product.getStatus() != ProductStatus.pending;
     }
 
-    private boolean hasActiveTransaction(UUID productId) {
-        return orderRepository.existsByProductIdAndStatusIn(productId, ACTIVE_TRANSACTION_STATUSES);
+    private boolean hasExclusiveTransactionLock(UUID productId) {
+        return orderRepository.existsExclusiveOrderLockByProductId(productId);
+    }
+
+    private boolean hasSellerActionLock(UUID productId) {
+        return orderRepository.existsByProductIdAndStatusIn(productId, OPEN_ORDER_STATUSES);
     }
 
     private void publishAdminModerationNotification(Product product, String actionDescription) {

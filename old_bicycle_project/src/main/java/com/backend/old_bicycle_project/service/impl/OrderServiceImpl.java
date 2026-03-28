@@ -57,8 +57,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponseDTO createOrder(User currentUser, OrderCreateRequestDTO requestDTO) {
-        Product product = productRepository.findById(requestDTO.getProductId())
-                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
+        Product product = lockProduct(requestDTO.getProductId());
 
         if (product.getSeller().getId().equals(currentUser.getId())) {
             throw new AppException(ErrorCode.FORBIDDEN);
@@ -68,14 +67,7 @@ public class OrderServiceImpl implements OrderService {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
-        if (orderRepository.existsByProductIdAndStatusIn(
-                product.getId(),
-                List.of(
-                        OrderStatus.pending,
-                        OrderStatus.deposited,
-                        OrderStatus.awaiting_buyer_confirmation,
-                        OrderStatus.completed
-                ))) {
+        if (orderRepository.existsExclusiveOrderLockByProductId(product.getId())) {
             throw new AppException(ErrorCode.RECORD_ALREADY_EXISTS);
         }
 
@@ -152,18 +144,26 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponseDTO acceptOrder(UUID orderId, User currentUser) {
         Order order = getOrder(orderId);
         validateSellerOrAdmin(order, currentUser);
+        lockProduct(order.getProduct().getId());
 
-        if (order.getStatus() != OrderStatus.pending) {
+        if (order.getStatus() != OrderStatus.pending || order.getFundingStatus() != OrderFundingStatus.unpaid) {
+            throw new AppException(ErrorCode.INVALID_STATUS);
+        }
+        if (orderRepository.existsExclusiveOrderLockByProductId(order.getProduct().getId())) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
         if (!payoutService.hasCompleteProfile(order.getSeller())) {
             throw new AppException(ErrorCode.PAYOUT_PROFILE_REQUIRED);
         }
 
-        order.setAcceptedAt(LocalDateTime.now());
-        order.setPaymentDeadline(LocalDateTime.now().plusHours(24));
+        LocalDateTime acceptedAt = LocalDateTime.now();
+        order.setAcceptedAt(acceptedAt);
+        order.setPaymentDeadline(acceptedAt.plusHours(24));
         order.setFundingStatus(OrderFundingStatus.awaiting_payment);
+        order.setCancelReason(null);
+        order.setCancelledAt(null);
         order = orderRepository.save(order);
+        rejectCompetingPendingOffers(order, acceptedAt);
 
         publishOrderNotification(
                 order.getBuyer().getId(),
@@ -188,17 +188,17 @@ public class OrderServiceImpl implements OrderService {
         if (order.getPaymentMethod() != PaymentMethod.cash) {
             throw new AppException(ErrorCode.PAYMENT_METHOD_NOT_SUPPORTED);
         }
+        if (order.getFundingStatus() != OrderFundingStatus.awaiting_payment
+                || order.getAcceptedAt() == null
+                || order.getPaymentDeadline() == null) {
+            throw new AppException(ErrorCode.PAYMENT_NOT_READY);
+        }
         if (order.getPaymentDeadline() != null && order.getPaymentDeadline().isBefore(LocalDateTime.now())) {
-            order.setStatus(OrderStatus.cancelled);
-            order.setFundingStatus(OrderFundingStatus.unpaid);
-            order.setCancelReason(OrderCancelReason.payment_expired);
-            order.setCancelledAt(LocalDateTime.now());
-            orderRepository.save(order);
+            expirePendingPaymentOrder(order, LocalDateTime.now());
             throw new AppException(ErrorCode.PAYMENT_EXPIRED);
         }
 
         order.setStatus(OrderStatus.deposited);
-        order.setAcceptedAt(order.getAcceptedAt() != null ? order.getAcceptedAt() : LocalDateTime.now());
         order.setPaidAmount(order.getRequiredUpfrontAmount());
         order.setRemainingAmount(order.getTotalAmount().subtract(order.getRequiredUpfrontAmount()));
         order.setFundingStatus(OrderFundingStatus.held);
@@ -282,6 +282,9 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponseDTO cancelOrder(UUID orderId, User currentUser) {
         Order order = getOrder(orderId);
+        boolean wasSellerReviewRequest = order.getStatus() == OrderStatus.pending
+                && order.getFundingStatus() == OrderFundingStatus.unpaid
+                && order.getAcceptedAt() == null;
 
         boolean canCancel = currentUser.getRole() == AppRole.admin
                 || order.getBuyer().getId().equals(currentUser.getId())
@@ -316,11 +319,15 @@ public class OrderServiceImpl implements OrderService {
         if (currentUser.getRole() == AppRole.admin) {
             order.setCancelReason(OrderCancelReason.admin_cancelled);
         } else if (order.getSeller().getId().equals(currentUser.getId())) {
-            order.setCancelReason(OrderCancelReason.seller_cancelled);
+            order.setCancelReason(
+                    wasSellerReviewRequest ? OrderCancelReason.seller_rejected : OrderCancelReason.seller_cancelled
+            );
         } else {
             order.setCancelReason(OrderCancelReason.buyer_cancelled);
         }
-        return mapToDTO(orderRepository.save(order));
+        Order savedOrder = orderRepository.save(order);
+        publishCancellationNotifications(savedOrder, currentUser);
+        return mapToDTO(savedOrder);
     }
 
     private BigDecimal resolveRequiredUpfrontAmount(
@@ -379,6 +386,103 @@ public class OrderServiceImpl implements OrderService {
                 NotificationType.order,
                 metadata
         ));
+    }
+
+    private void expirePendingPaymentOrder(Order order, LocalDateTime expiredAt) {
+        order.setStatus(OrderStatus.cancelled);
+        order.setFundingStatus(OrderFundingStatus.unpaid);
+        order.setCancelReason(OrderCancelReason.payment_expired);
+        order.setCancelledAt(expiredAt);
+        orderRepository.save(order);
+
+        String metadata = "{\"orderId\":\"" + order.getId() + "\"}";
+        publishOrderNotification(
+                order.getBuyer().getId(),
+                "Đơn hàng đã hết hạn thanh toán",
+                "Bạn chưa hoàn tất thanh toán đúng hạn nên hệ thống đã tự hủy đơn hàng này.",
+                metadata
+        );
+        publishOrderNotification(
+                order.getSeller().getId(),
+                "Đơn hàng tự hủy vì quá hạn thanh toán",
+                "Người mua chưa thanh toán đúng hạn nên hệ thống đã tự hủy đơn hàng này.",
+                metadata
+        );
+    }
+
+    private void publishCancellationNotifications(Order order, User actor) {
+        String metadata = "{\"orderId\":\"" + order.getId() + "\"}";
+
+        if (actor.getRole() == AppRole.admin) {
+            publishOrderNotification(
+                    order.getBuyer().getId(),
+                    "Đơn hàng đã bị admin hủy",
+                    "Admin đã hủy đơn hàng này trước khi giao dịch hoàn tất.",
+                    metadata
+            );
+            publishOrderNotification(
+                    order.getSeller().getId(),
+                    "Đơn hàng đã bị admin hủy",
+                    "Admin đã hủy đơn hàng này trước khi giao dịch hoàn tất.",
+                    metadata
+            );
+            return;
+        }
+
+        if (order.getSeller().getId().equals(actor.getId())) {
+            publishOrderNotification(
+                    order.getBuyer().getId(),
+                    order.getCancelReason() == OrderCancelReason.seller_rejected
+                            ? "Yêu cầu mua đã bị từ chối"
+                            : "Đơn hàng đã bị người bán hủy",
+                    order.getCancelReason() == OrderCancelReason.seller_rejected
+                            ? "Người bán đã từ chối yêu cầu mua này."
+                            : "Người bán đã hủy đơn hàng này trước khi giao dịch hoàn tất.",
+                    metadata
+            );
+            return;
+        }
+
+        publishOrderNotification(
+                order.getSeller().getId(),
+                "Người mua đã hủy đơn hàng",
+                "Người mua đã hủy đơn hàng này trước khi giao dịch hoàn tất.",
+                metadata
+        );
+    }
+
+    private void rejectCompetingPendingOffers(Order acceptedOrder, LocalDateTime decisionAt) {
+        List<Order> competingOrders = orderRepository.findByProductIdAndStatusAndFundingStatusOrderByCreatedAtAsc(
+                acceptedOrder.getProduct().getId(),
+                OrderStatus.pending,
+                OrderFundingStatus.unpaid
+        );
+
+        List<Order> rejectedOrders = competingOrders.stream()
+                .filter(order -> !order.getId().equals(acceptedOrder.getId()))
+                .peek(order -> {
+                    order.setStatus(OrderStatus.cancelled);
+                    order.setCancelReason(OrderCancelReason.seller_rejected);
+                    order.setCancelledAt(decisionAt);
+                })
+                .toList();
+
+        if (rejectedOrders.isEmpty()) {
+            return;
+        }
+
+        orderRepository.saveAll(rejectedOrders);
+        rejectedOrders.forEach(order -> publishOrderNotification(
+                order.getBuyer().getId(),
+                "Yêu cầu mua không được chọn",
+                "Người bán đã chọn một yêu cầu mua khác cho xe này. Đơn của bạn đã được chuyển sang trạng thái từ chối.",
+                "{\"orderId\":\"" + order.getId() + "\",\"productId\":\"" + order.getProduct().getId() + "\"}"
+        ));
+    }
+
+    private Product lockProduct(UUID productId) {
+        return productRepository.findByIdForUpdate(productId)
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
     }
 
     private OrderResponseDTO mapToDTO(Order order) {

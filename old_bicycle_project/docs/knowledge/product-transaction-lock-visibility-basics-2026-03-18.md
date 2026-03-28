@@ -1,165 +1,267 @@
-# Product Transaction Lock Và Public Visibility - 2026-03-18
+# Product Transaction Lock Và Multi-Buyer Request Basics - 2026-03-28
 
 ## Bối cảnh
 
-Trong dự án này, một xe có thể đang ở trạng thái:
+Trước đây dự án dùng tư duy rất đơn giản:
 
-- đã có buyer tạo order
-- seller đã chấp nhận order
-- buyer đã đặt cọc
-- seller đã báo giao xe nhưng buyer chưa xác nhận nhận xe
+- buyer đầu tiên tạo order thành công
+- listing bị xem là đang có giao dịch mở
+- buyer khác không còn gửi request được nữa
 
-Nếu vẫn để xe đó xuất hiện như một món hàng đang bán bình thường ở marketplace public, người dùng khác sẽ hiểu sai rằng xe vẫn còn “rảnh” để mua.
+Cách đó dễ làm, nhưng không giống tình huống marketplace thật. Trong thực tế, seller có thể nhận nhiều yêu cầu mua rồi mới chọn một buyer.
 
-## Khái niệm
+Ở lần cập nhật này, backend được chỉnh lại để:
 
-### `status` của product là gì?
+- cho phép nhiều order request cùng tồn tại ở giai đoạn chờ seller quyết định
+- chỉ khóa public listing khi seller đã chấp nhận một request
+- tự từ chối các request còn lại sau khi seller chọn một buyer
 
-`status` là trạng thái chính của bản ghi sản phẩm trong database.
+## Khái niệm quan trọng
+
+### `status` của order là gì?
+
+`status` là trạng thái vòng đời chính của order.
 
 Ví dụ:
 
-- `pending`: tin mới đăng, chờ admin duyệt
-- `active`: tin đã được duyệt và đang hiển thị
-- `sold`: giao dịch đã hoàn tất
+- `pending`
+- `deposited`
+- `awaiting_buyer_confirmation`
+- `completed`
+- `cancelled`
 
-### `lockedForTransaction` là gì?
+### `funding_status` là gì?
 
-`lockedForTransaction` là một cờ phụ, nghĩa là:
+`funding_status` là trạng thái tiền bên trong order.
 
-> xe này đang có giao dịch mở, nên không nên cho buyer khác tiếp tục mua nữa
+Ví dụ:
 
-Đây không phải là một enum mới trong database. Nó là dữ liệu backend tính ra khi trả response.
+- `unpaid`
+- `awaiting_payment`
+- `held`
+- `seller_payout_pending`
+- `refund_pending_transfer`
 
-## Vì sao không dùng lại `pending`?
+### Vì sao phải nhìn cả hai field cùng lúc?
 
-Vì `pending` trong dự án này đã có nghĩa riêng:
+Vì sau cập nhật này, `pending` không còn đủ để hiểu nghiệp vụ.
 
-> tin đăng đang chờ admin duyệt
+Ta phải đọc theo cặp:
 
-Nếu dùng `pending` để biểu diễn “xe đang bị giữ chỗ bởi giao dịch”, nghĩa của dữ liệu sẽ bị lẫn.
+- `pending + unpaid`
+  - buyer đã gửi request
+  - seller chưa chốt
+  - chưa bước vào thanh toán độc quyền
+- `pending + awaiting_payment`
+  - seller đã chấp nhận request này
+  - buyer đang ở bước thanh toán
+  - listing đã bị khóa độc quyền
 
-Khi dữ liệu bị lẫn nghĩa như vậy, frontend và backend rất dễ hiểu khác nhau.
+## Hai cờ mà backend trả về cho product
 
-## Giải pháp đã áp dụng
+### `lockedForTransaction`
 
-Thay vì đổi `product.status`, backend làm 2 việc:
+Đây là cờ cho biết listing đã bước vào giao dịch độc quyền hay chưa.
 
-1. Khi search public, ẩn các product đang có order mở.
-2. Khi trả chi tiết product, thêm cờ `lockedForTransaction`.
+Nó chỉ là `true` khi có một trong các trường hợp:
 
-Các order được xem là “đang mở” trong fix này là:
+- `pending + awaiting_payment`
+- `deposited`
+- `awaiting_buyer_confirmation`
+
+Ý nghĩa:
+
+- buyer khác không còn thấy listing ngoài marketplace
+- detail page cũng không cho tạo thêm request mới
+
+### `sellerActionLocked`
+
+Đây là cờ khác, dành cho phía seller.
+
+Nó dùng để báo rằng seller chưa được sửa, ẩn, xóa listing vì đang có order mở liên quan đến listing đó.
+
+Trong code hiện tại, cờ này là `true` khi product đang có order ở các trạng thái:
 
 - `pending`
 - `deposited`
 - `awaiting_buyer_confirmation`
 
-## Luồng backend
+Ý nghĩa:
+
+- listing có thể vẫn còn public nếu chỉ mới có các request `pending + unpaid`
+- nhưng seller UI vẫn phải khóa các thao tác sửa/ẩn/xóa để tránh đổi listing giữa lúc có buyer đang chờ
+
+## Luồng backend sau khi cập nhật
 
 ```mermaid
 sequenceDiagram
-    participant Client as FE
-    participant Controller as ProductController
-    participant Service as ProductService
-    participant Repo as ProductRepository + OrderRepository
+    participant Buyer as Buyer FE
+    participant ProductApi as Product API
+    participant OrderApi as Order API
+    participant ProductService as ProductService
+    participant OrderService as OrderServiceImpl
+    participant OrderRepo as OrderRepository
     participant DB as PostgreSQL
 
-    Client->>Controller: GET /api/products
-    Controller->>Service: searchProducts(filter, page, size)
-    Service->>Repo: findAll(ProductSpecification.fromFilter(...))
-    Repo->>DB: Query product public + NOT EXISTS active order
-    DB-->>Repo: Matching products
-    Repo-->>Service: Page<Product>
-    Service->>Repo: existsByProductIdAndStatusIn(...) for each response
-    Repo->>DB: Check active transaction
-    DB-->>Repo: true/false
-    Service-->>Controller: Page<ProductResponse>
-    Controller-->>Client: ApiResponse<Page<ProductResponse>>
+    Buyer->>OrderApi: POST /api/orders
+    OrderApi->>OrderService: createOrder(...)
+    OrderService->>OrderRepo: existsExclusiveOrderLockByProductId(productId)
+    OrderRepo->>DB: check pending+awaiting_payment / deposited / awaiting_buyer_confirmation
+    DB-->>OrderRepo: false
+    OrderService->>DB: save order(status=pending, funding=unpaid)
+    DB-->>OrderService: order created
+
+    Buyer->>ProductApi: GET /api/products
+    ProductApi->>ProductService: searchProducts(...)
+    ProductService->>DB: query public products
+    Note over ProductService,DB: pending+unpaid request chưa bị xem là exclusive lock
+    ProductService->>OrderRepo: findProductIdsWithExclusiveOrderLock(...)
+    ProductService->>OrderRepo: findLockedProductIdsByProductIdsAndStatuses(...)
+    ProductService-->>Buyer: ProductResponse{lockedForTransaction, sellerActionLocked}
+
+    Seller->>OrderApi: POST /api/orders/{id}/accept
+    OrderApi->>OrderService: acceptOrder(...)
+    OrderService->>DB: update accepted order to pending+awaiting_payment
+    OrderService->>OrderRepo: findByProductIdAndStatusAndFundingStatusOrderByCreatedAtAsc(...)
+    OrderService->>DB: cancel competing pending+unpaid orders with seller_rejected
 ```
 
 ## Giải thích từng lớp
 
 ### 1. Client gửi gì?
 
-Frontend gọi:
+Buyer FE gửi `POST /api/orders` để tạo request mua.
 
-- `GET /api/products`
-- hoặc `GET /api/products/{id}`
+Seller FE gửi `POST /api/orders/{id}/accept` để chọn một buyer.
+
+FE seller pages và marketplace pages gọi product APIs để lấy `lockedForTransaction` và `sellerActionLocked`.
 
 ### 2. Controller làm gì?
 
-Controller chỉ nhận request rồi chuyển tiếp xuống service.
+Controller chỉ nhận request rồi chuyển xuống service.
 
-Nó không tự quyết định business rule “xe có đang bị giữ bởi giao dịch hay không”.
+Rule nghiệp vụ không nằm ở controller.
 
 ### 3. Service làm gì?
 
-`ProductService` có 2 việc chính:
+`OrderServiceImpl` quyết định:
 
-- gọi specification để lọc danh sách public
-- map entity sang `ProductResponse`
+- có cho tạo request mới không
+- có cho seller accept request không
+- có phải tự từ chối các request còn lại không
 
-Khi map sang response, service thêm field:
+`ProductService` quyết định:
 
-- `lockedForTransaction`
+- listing nào còn được public
+- listing nào phải gắn `lockedForTransaction`
+- listing nào phải gắn `sellerActionLocked`
 
 ### 4. Repository làm gì?
 
-`OrderRepository` kiểm tra xem product có order mở hay không bằng:
+`OrderRepository` có 3 loại truy vấn quan trọng:
 
-- `existsByProductIdAndStatusIn(...)`
+- kiểm tra exclusive lock
+- lấy danh sách product đang có exclusive lock
+- lấy danh sách product đang có open order để khóa thao tác seller
 
-`ProductSpecification` dùng subquery để loại khỏi public list những xe đang có transaction mở.
+`ProductRepository` cũng có thêm `findByIdForUpdate(...)` với `PESSIMISTIC_WRITE`.
 
-### 5. Database đổi gì?
+Điểm này rất quan trọng vì nó khóa dòng `product` ngay trong transaction khi:
 
-Fix này không cần migration hay cột mới.
+- buyer tạo request mua mới
+- seller accept một request
 
-Nó chỉ đổi cách đọc dữ liệu.
+Nhờ vậy, hai request gần như đồng thời trên cùng listing sẽ bị serialize theo thứ tự database xử lý, thay vì cả hai cùng đi qua bước kiểm tra rồi cùng ghi dữ liệu. Nói ngắn gọn: khóa này giúp tránh race condition, tức là lỗi tranh chấp khi nhiều thao tác xảy ra cùng lúc.
 
-## File nào tham gia?
+Ngoài ra, query kiểm tra `exclusive lock` trong `OrderRepository` đã được chuyển sang native SQL. Lý do là phiên bản JPQL trước đó có thể làm `GET /api/products` và `GET /api/products/{id}` lỗi runtime `400` dù query SQL tương đương vẫn đúng ở database. Với project này, native SQL an toàn hơn vì nó bám trực tiếp vào schema thật của bảng `orders`.
+
+### 5. Database thay đổi gì?
+
+Không có migration mới trong lần sửa này.
+
+Nhưng nghĩa của dữ liệu runtime đã thay đổi:
+
+- `pending` không tự động nghĩa là listing bị khóa public
+- `cancel_reason` có thêm trường hợp `seller_rejected`
+
+### 6. Response trả về FE thay đổi gì?
+
+`ProductResponse` bây giờ phân biệt rõ:
+
+- `lockedForTransaction`
+- `sellerActionLocked`
+
+Điều này giúp FE không bị lẫn giữa:
+
+- khóa public cho buyer
+- khóa thao tác cho seller
+
+## Ví dụ dễ hiểu
+
+Giả sử listing A đang `active` và inspection còn hiệu lực.
+
+### Bước 1: Buyer A gửi request
+
+- order = `pending + unpaid`
+- listing vẫn còn public
+- buyer B vẫn có thể gửi request
+- seller chưa được sửa hoặc ẩn listing
+
+### Bước 2: Buyer B cũng gửi request
+
+- hệ thống có 2 order cùng ở `pending + unpaid`
+- seller vào trang đơn hàng để chọn
+
+### Bước 3: Seller accept request của Buyer B
+
+- request của Buyer B đổi thành `pending + awaiting_payment`
+- listing bị `lockedForTransaction = true`
+- request của Buyer A bị chuyển sang `cancelled + seller_rejected`
+
+### Bước 4: Buyer B thanh toán
+
+- order đi sang `deposited`
+- tiền được giữ ở nhánh escrow
+
+## Các file chính của lần sửa này
 
 - [ProductResponse.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/dto/product/ProductResponse.java)
 - [ProductService.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/ProductService.java)
 - [ProductSpecification.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/specification/ProductSpecification.java)
 - [OrderRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/OrderRepository.java)
-- [ProductServiceTest.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/test/java/com/backend/old_bicycle_project/service/ProductServiceTest.java)
+- [OrderServiceImpl.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/impl/OrderServiceImpl.java)
 
-## Ví dụ dễ hiểu
+## Những hiểu lầm dễ gặp
 
-Giả sử xe A đang `active`.
+### Hiểu lầm 1: `pending` luôn nghĩa là listing đã bị khóa
 
-1. Buyer tạo order.
-2. Order có `status = pending`.
-3. Từ lúc đó:
-   - buyer khác không nên thấy xe A trong public list nữa
-   - nếu có link trực tiếp vào detail page, FE sẽ thấy `lockedForTransaction = true`
+Không đúng nữa.
 
-Như vậy:
+Phải nhìn thêm `funding_status`.
 
-- dữ liệu `status` của product không bị lẫn nghĩa
-- nhưng UX vẫn phản ánh đúng là xe đang bị giữ bởi giao dịch
+### Hiểu lầm 2: seller accept là lúc order rời khỏi `pending`
 
-## Hiểu lầm dễ gặp
+Không đúng trong code hiện tại.
 
-### Hiểu lầm 1: “Xe phải chuyển sang `pending`”
+Sau khi accept, order vẫn là `pending`, nhưng `funding_status` đổi thành `awaiting_payment`.
 
-Không đúng trong dự án này.
+### Hiểu lầm 3: chỉ cần một cờ `lockedForTransaction` là đủ
 
-`pending` của product là chờ admin duyệt, không phải chờ giao dịch.
+Không đủ.
 
-### Hiểu lầm 2: “Nếu product còn `active` thì chắc chắn vẫn đang bán”
+Buyer và seller cần nhìn hai loại khóa khác nhau.
 
-Không còn đúng nữa.
+## Điều áp dụng trong dự án này
 
-Sau fix này, một product có thể:
+Lần cập nhật này giúp backend gần hơn với nghiệp vụ marketplace:
 
-- vẫn có `status = active`
-- nhưng `lockedForTransaction = true`
-- và bị ẩn khỏi public marketplace
+- nhiều buyer có thể gửi request
+- seller chọn một buyer
+- request còn lại bị từ chối tự động
 
-### Hiểu lầm 3: “Chỉ khi buyer đặt cọc xong mới cần khóa”
+Nhưng team vẫn giữ một điểm đơn giản hóa:
 
-Trong code hiện tại, ngay từ lúc order mở ra đã xem là có active transaction.
+- ngay khi seller đã accept một request, listing đi vào khóa độc quyền
+- hệ thống không giữ thêm “backup buyer” sau mốc accept
 
-Điều này giúp tránh nhiều buyer cùng tạo order cho một xe.
+Điểm này làm flow an toàn hơn cho payment và payout hiện có.
