@@ -29,6 +29,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
@@ -42,6 +43,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -269,6 +271,33 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginNormalizesEmailBeforeAuthenticating() {
+        User user = user("buyer@test.dev");
+        user.setVerified(true);
+        ReflectionTestUtils.setField(authService, "accessTokenExpiration", 900000L);
+
+        Authentication authentication = mock(Authentication.class);
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(authentication.getPrincipal()).thenReturn(user);
+        when(jwtTokenProvider.generateAccessToken(user)).thenReturn("access-token");
+        when(refreshTokenService.createRefreshToken(user)).thenReturn(RefreshToken.builder()
+                .token("refresh-token")
+                .expiresAt(LocalDateTime.now().plusDays(1))
+                .user(user)
+                .build());
+
+        authService.login(new com.backend.old_bicycle_project.dto.auth.LoginRequest() {{
+            setEmail("  BUYER@Test.Dev ");
+            setPassword("Password1");
+        }});
+
+        ArgumentCaptor<UsernamePasswordAuthenticationToken> tokenCaptor =
+                ArgumentCaptor.forClass(UsernamePasswordAuthenticationToken.class);
+        verify(authenticationManager).authenticate(tokenCaptor.capture());
+        assertThat(tokenCaptor.getValue().getPrincipal()).isEqualTo("buyer@test.dev");
+    }
+
+    @Test
     void loginRejectsInactiveUserWithClearError() {
         when(authenticationManager.authenticate(any()))
                 .thenThrow(new DisabledException("Account disabled"));
@@ -379,6 +408,15 @@ class AuthServiceTest {
         assertThat(currentUser.getPasswordHash()).isEqualTo("fresh-hash");
         verify(refreshTokenService).deleteAllByUser(currentUser);
         assertThat(message).contains("Doi mat khau thanh cong");
+    }
+
+    @Test
+    void verifyEmailRejectsBlankToken() {
+        assertThatThrownBy(() -> authService.verifyEmail("   "))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_KEY));
+
+        verify(emailService, never()).findByToken(any());
     }
 
     private User user(String email) {

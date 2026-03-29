@@ -138,7 +138,7 @@ public class ProductController {
     @PreAuthorize("hasRole('SELLER')")
     public ApiResponse<ProductResponse> updateProduct(
             @PathVariable UUID id,
-            @ModelAttribute ProductUpdateRequest request,
+            @Valid @ModelAttribute ProductUpdateRequest request,
             @RequestPart(value = "images", required = false) List<MultipartFile> newImages,
             @AuthenticationPrincipal User currentUser
     ) {

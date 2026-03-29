@@ -31,11 +31,12 @@ import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.specification.ProductSpecification;
+import com.backend.old_bicycle_project.validation.MultipartFileValidationUtils;
+import com.backend.old_bicycle_project.validation.PaginationValidationUtils;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -78,9 +79,10 @@ public class ProductService {
     private final StorageService storageService;
 
     public Page<ProductResponse> searchProducts(ProductFilterRequest filter, int page, int size) {
+        validatePriceRange(filter);
         Specification<Product> spec = ProductSpecification.fromFilter(filter);
         Sort sort = buildSort(filter);
-        Pageable pageable = PageRequest.of(page, size, sort);
+        Pageable pageable = PaginationValidationUtils.createPageRequest(page, size, sort);
 
         return mapProductPage(productRepository.findAll(spec, pageable));
     }
@@ -141,8 +143,9 @@ public class ProductService {
 
     @Transactional
     public ProductResponse create(ProductCreateRequest request, List<MultipartFile> images, User seller) {
+        List<MultipartFile> normalizedImages = MultipartFileValidationUtils.normalizeFiles(images);
         validateRequiredTechnicalFields(request.getFrameSize(), request.getWheelSize());
-        validateMinimumImages(images);
+        validateMinimumImages(normalizedImages);
 
         BrakeType brakeType = brakeTypeRepository.findById(request.getBrakeTypeId())
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
@@ -179,7 +182,7 @@ public class ProductService {
 
         productRepository.save(product);
         product.setExpiresAt(product.getCreatedAt().plusDays(30));
-        product.setImages(uploadImages(product, images));
+        product.setImages(uploadImages(product, normalizedImages));
         productRepository.save(product);
         publishAdminModerationNotification(product, "cần admin kiểm duyệt tin đăng mới");
 
@@ -190,6 +193,7 @@ public class ProductService {
     public ProductResponse update(UUID id, ProductUpdateRequest request, List<MultipartFile> newImages, User currentUser) {
         Product product = findActiveProductById(id);
         validateSellerCanModify(product, currentUser);
+        List<MultipartFile> normalizedNewImages = MultipartFileValidationUtils.normalizeFiles(newImages);
 
         if (request.getTitle() != null) product.setTitle(request.getTitle());
         if (request.getDescription() != null) product.setDescription(request.getDescription());
@@ -224,9 +228,9 @@ public class ProductService {
         }
 
         if (newImages != null && !newImages.isEmpty()) {
-            validateMinimumImages(newImages);
+            validateMinimumImages(normalizedNewImages);
             removeStoredImages(product);
-            List<ProductImage> uploadedImages = uploadImages(product, newImages);
+            List<ProductImage> uploadedImages = uploadImages(product, normalizedNewImages);
             product.getImages().clear();
             product.getImages().addAll(uploadedImages);
         }
@@ -279,7 +283,7 @@ public class ProductService {
     }
 
     public Page<ProductResponse> getMyProducts(User currentUser, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Pageable pageable = PaginationValidationUtils.createPageRequest(page, size, Sort.by("createdAt").descending());
         return mapProductPage(productRepository.findBySellerIdAndDeletedAtIsNull(currentUser.getId(), pageable));
     }
 
@@ -288,7 +292,7 @@ public class ProductService {
     }
 
     public Page<ProductResponse> getAllForAdmin(ProductStatus status, UUID sellerId, String keyword, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Pageable pageable = PaginationValidationUtils.createPageRequest(page, size, Sort.by("createdAt").descending());
         Specification<Product> specification = ProductSpecification.fromAdminFilter(status, sellerId, keyword);
         return mapProductPage(productRepository.findAll(specification, pageable));
     }
@@ -539,18 +543,12 @@ public class ProductService {
     }
 
     private void validateMinimumImages(List<MultipartFile> images) {
-        if (countNonEmptyImages(images) < 3) {
-            throw new AppException(ErrorCode.PRODUCT_MINIMUM_IMAGES_REQUIRED);
-        }
-    }
-
-    private long countNonEmptyImages(List<MultipartFile> images) {
-        if (images == null) {
-            return 0;
-        }
-        return images.stream()
-                .filter(image -> image != null && !image.isEmpty())
-                .count();
+        MultipartFileValidationUtils.validateRequiredImages(
+                images,
+                3,
+                ErrorCode.PRODUCT_MINIMUM_IMAGES_REQUIRED,
+                ErrorCode.PRODUCT_IMAGE_INVALID
+        );
     }
 
     private List<ProductImage> uploadImages(Product product, List<MultipartFile> images) {
@@ -571,6 +569,24 @@ public class ProductService {
         }
         productImageRepository.saveAll(productImages);
         return productImages;
+    }
+
+    private void validatePriceRange(ProductFilterRequest filter) {
+        if (filter == null) {
+            return;
+        }
+
+        if (filter.getMinPrice() != null && filter.getMinPrice().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            throw new AppException(ErrorCode.INVALID_PRICE_RANGE);
+        }
+        if (filter.getMaxPrice() != null && filter.getMaxPrice().compareTo(java.math.BigDecimal.ZERO) < 0) {
+            throw new AppException(ErrorCode.INVALID_PRICE_RANGE);
+        }
+        if (filter.getMinPrice() != null
+                && filter.getMaxPrice() != null
+                && filter.getMinPrice().compareTo(filter.getMaxPrice()) > 0) {
+            throw new AppException(ErrorCode.INVALID_PRICE_RANGE);
+        }
     }
 
     private void removeStoredImages(Product product) {

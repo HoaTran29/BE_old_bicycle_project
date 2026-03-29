@@ -21,6 +21,8 @@ import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutStatus;
 import com.backend.old_bicycle_project.entity.enums.PayoutType;
 import com.backend.old_bicycle_project.entity.enums.RefundStatus;
+import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.PaymentRepository;
@@ -29,6 +31,7 @@ import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.StorageService;
+import com.backend.old_bicycle_project.support.TestMultipartFiles;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -43,6 +46,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -160,12 +164,7 @@ class RefundServiceImplTest {
         User admin = user(AppRole.admin, "admin@test.dev");
         Order order = depositedOrder(buyer);
         Payment payment = successfulUpfrontPayment(order);
-        MockMultipartFile evidence = new MockMultipartFile(
-                "files",
-                "frame-crack.jpg",
-                "image/jpeg",
-                "fake-image".getBytes()
-        );
+        MockMultipartFile evidence = TestMultipartFiles.image("files", "frame-crack.png");
 
         when(orderRepository.findByIdAndBuyerId(order.getId(), buyer.getId())).thenReturn(Optional.of(order));
         when(refundRequestRepository.findFirstByOrderIdAndStatusOrderByCreatedAtDesc(order.getId(), RefundStatus.pending))
@@ -194,8 +193,38 @@ class RefundServiceImplTest {
         );
 
         assertThat(response.getEvidenceFiles()).hasSize(1);
-        assertThat(response.getEvidenceFiles().getFirst().getFileName()).isEqualTo("frame-crack.jpg");
+        assertThat(response.getEvidenceFiles().getFirst().getFileName()).isEqualTo("frame-crack.png");
         verify(storageService).uploadFile(any(), anyString());
+    }
+
+    @Test
+    void requestRefundRejectsNonImageEvidence() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = depositedOrder(buyer);
+        Payment payment = successfulUpfrontPayment(order);
+
+        when(orderRepository.findByIdAndBuyerId(order.getId(), buyer.getId())).thenReturn(Optional.of(order));
+        when(refundRequestRepository.findFirstByOrderIdAndStatusOrderByCreatedAtDesc(order.getId(), RefundStatus.pending))
+                .thenReturn(Optional.empty());
+        when(paymentRepository.findFirstByOrderIdAndPhaseOrderByCreatedAtDesc(order.getId(), PaymentPhase.upfront))
+                .thenReturn(Optional.of(payment));
+        when(refundRequestRepository.save(any(RefundRequest.class))).thenAnswer(invocation -> {
+            RefundRequest refundRequest = invocation.getArgument(0);
+            if (refundRequest.getId() == null) {
+                refundRequest.setId(UUID.randomUUID());
+            }
+            return refundRequest;
+        });
+
+        assertThatThrownBy(() -> refundService.requestRefund(
+                order.getId(),
+                buyer,
+                RefundCreateRequestDTO.builder().reason("Invalid file upload").build(),
+                List.of(TestMultipartFiles.text("files", "refund.txt"))
+        ))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.REFUND_EVIDENCE_IMAGE_ONLY);
     }
 
     @Test

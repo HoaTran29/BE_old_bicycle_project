@@ -7,8 +7,8 @@
 |**Field**|**Value**|
 | :- | :- |
 |**Project Name**|Old Bicycles Marketplace|
-|**Document Version**|4\.3|
-|**Date**|2026-03-28|
+|**Document Version**|4\.4|
+|**Date**|2026-03-29|
 |**Author**|Development Team|
 |**Status**|Final|
 ## **Revision History**
@@ -22,6 +22,7 @@
 |4\.1|2026-03-24|Dev Team|Synced groupset, size chart, payment timeout/expiry, and AI assistant mức 2 qua Spring Boot + Vercel AI Gateway|
 |4\.2|2026-03-24|Dev Team|Final audit sync with shipped scope, actual integrations, auth flow, messaging scope, admin payout management, and runtime database schema|
 |4\.3|2026-03-28|Dev Team|Hardened inspection detail access: public users read inspection summary via product detail, while raw inspection detail endpoint is restricted to admin/inspector tooling|
+|4\.4|2026-03-29|Dev Team|Hardened backend validation: real image verification for multipart uploads, PDF-only inspection reports, sanitized storage paths, bounded pagination, stricter price-range checks, and normalized auth input|
 
 
 # **1. Introduction**
@@ -205,6 +206,8 @@ Không yêu cầu hardware interface đặc biệt. Hệ thống hoạt động 
 - Response time < 3 giây cho mọi operations
 - Hệ thống hỗ trợ upload ảnh sản phẩm, ảnh chứng cứ và file báo cáo kiểm định; video chưa nằm trong phạm vi release hiện tại
 - Các giới hạn số lượng/tệp được kiểm soát bởi validation của từng form FE/BE và chính sách storage đang dùng
+- Ảnh upload phải là file ảnh hợp lệ ở phía backend; file báo cáo kiểm định dùng định dạng PDF và đường dẫn storage được chuẩn hóa/sanitize trước khi publish
+- Các API phân trang công khai/nội bộ dùng giới hạn page >= 0 và size trong khoảng 1-100; filter giá âm hoặc minPrice > maxPrice bị từ chối ở server-side
 
 
 ### **2.4.3 Business Constraints**

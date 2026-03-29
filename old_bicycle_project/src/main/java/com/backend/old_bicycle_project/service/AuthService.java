@@ -100,7 +100,7 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        String normalizedEmail = request.getEmail() == null ? null : request.getEmail().trim();
+        String normalizedEmail = normalizeEmail(request.getEmail());
         Authentication authentication;
 
         try {
@@ -180,7 +180,12 @@ public class AuthService {
 
     @Transactional
     public String verifyEmail(String token) {
-        EmailVerification verification = emailService.findByToken(token)
+        String normalizedToken = trimToNull(token);
+        if (normalizedToken == null) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+
+        EmailVerification verification = emailService.findByToken(normalizedToken)
                 .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
 
         if (verification.isExpired()) {

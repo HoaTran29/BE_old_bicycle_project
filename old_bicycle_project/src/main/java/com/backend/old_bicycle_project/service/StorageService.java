@@ -1,18 +1,23 @@
 package com.backend.old_bicycle_project.service;
 
+import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.regex.Pattern;
 import java.util.UUID;
 
 /**
@@ -23,6 +28,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class StorageService {
+
+    private static final Pattern UNSAFE_FILENAME_CHARACTERS = Pattern.compile("[^A-Za-z0-9._-]");
 
     @Value("${supabase.url}")
     private String supabaseUrl;
@@ -46,15 +53,18 @@ public class StorageService {
      * @return public URL của file đã upload
      */
     public String uploadFile(MultipartFile file, String folder) {
-        String filename = UUID.randomUUID() + "_" + file.getOriginalFilename();
-        String path = folder + "/" + filename;
+        if (file == null || file.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST_BODY);
+        }
+
+        String normalizedFolder = normalizeFolder(folder);
+        String filename = UUID.randomUUID() + "_" + sanitizeFilename(file.getOriginalFilename());
+        String path = normalizedFolder + "/" + filename;
         String uploadUrl = supabaseUrl + "/storage/v1/object/" + bucket + "/" + path;
 
         HttpHeaders headers = new HttpHeaders();
         applyStorageAuthorization(headers);
-        headers.setContentType(MediaType.parseMediaType(
-                file.getContentType() != null ? file.getContentType() : "application/octet-stream"
-        ));
+        headers.setContentType(resolveContentType(file.getContentType()));
 
         try {
             HttpEntity<byte[]> requestEntity = new HttpEntity<>(file.getBytes(), headers);
@@ -114,5 +124,61 @@ public class StorageService {
 
     private boolean isJwtStyleKey(String apiKey) {
         return apiKey != null && apiKey.chars().filter(ch -> ch == '.').count() == 2;
+    }
+
+    private String normalizeFolder(String folder) {
+        if (folder == null || folder.isBlank()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST_BODY);
+        }
+
+        String normalizedFolder = folder.trim()
+                .replace('\\', '/')
+                .replaceAll("/+", "/");
+
+        if (normalizedFolder.startsWith("/")) {
+            normalizedFolder = normalizedFolder.substring(1);
+        }
+        if (normalizedFolder.endsWith("/")) {
+            normalizedFolder = normalizedFolder.substring(0, normalizedFolder.length() - 1);
+        }
+        if (normalizedFolder.isBlank() || normalizedFolder.contains("..")) {
+            throw new AppException(ErrorCode.INVALID_REQUEST_BODY);
+        }
+
+        return normalizedFolder;
+    }
+
+    private String sanitizeFilename(String originalFilename) {
+        String cleanedPath = StringUtils.cleanPath(originalFilename != null ? originalFilename : "");
+        String filename = cleanedPath.replace('\\', '/');
+        int lastSlashIndex = filename.lastIndexOf('/');
+        if (lastSlashIndex >= 0) {
+            filename = filename.substring(lastSlashIndex + 1);
+        }
+
+        String sanitizedFilename = UNSAFE_FILENAME_CHARACTERS
+                .matcher(filename.trim().replace(' ', '_'))
+                .replaceAll("_")
+                .replaceAll("^\\.+", "");
+
+        if (sanitizedFilename.isBlank()) {
+            return "file";
+        }
+
+        return sanitizedFilename.length() <= 120
+                ? sanitizedFilename
+                : sanitizedFilename.substring(sanitizedFilename.length() - 120);
+    }
+
+    private MediaType resolveContentType(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+
+        try {
+            return MediaType.parseMediaType(contentType);
+        } catch (InvalidMediaTypeException exception) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
     }
 }

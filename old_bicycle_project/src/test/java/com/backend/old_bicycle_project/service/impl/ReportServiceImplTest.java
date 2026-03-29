@@ -18,6 +18,7 @@ import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.ReportRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.StorageService;
+import com.backend.old_bicycle_project.support.TestMultipartFiles;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -114,12 +115,7 @@ class ReportServiceImplTest {
             return report;
         });
 
-        MockMultipartFile image = new MockMultipartFile(
-                "files",
-                "listing-proof.jpg",
-                "image/jpeg",
-                "fake-image".getBytes()
-        );
+        MockMultipartFile image = TestMultipartFiles.image("files", "listing-proof.png");
 
         ReportResponseDTO response = reportService.submitReport(reporterId, ReportRequestDTO.builder()
                 .targetId(targetId)
@@ -129,8 +125,39 @@ class ReportServiceImplTest {
                 .build(), List.of(image));
 
         assertThat(response.getEvidenceFiles()).hasSize(1);
-        assertThat(response.getEvidenceFiles().get(0).getFileName()).isEqualTo("listing-proof.jpg");
+        assertThat(response.getEvidenceFiles().get(0).getFileName()).isEqualTo("listing-proof.png");
         verify(storageService).uploadFile(any(), any());
+    }
+
+    @Test
+    void submitReportRejectsNonImageEvidence() {
+        UUID reporterId = UUID.randomUUID();
+        UUID targetId = UUID.randomUUID();
+        User reporter = user(reporterId, AppRole.buyer);
+
+        when(userRepository.findById(reporterId)).thenReturn(Optional.of(reporter));
+        when(productRepository.existsById(targetId)).thenReturn(true);
+        when(reportRepository.existsByReporterIdAndTargetIdAndStatusIn(any(), any(), any())).thenReturn(false);
+        when(reportRepository.save(any(Report.class))).thenAnswer(invocation -> {
+            Report report = invocation.getArgument(0);
+            if (report.getId() == null) {
+                report.setId(UUID.randomUUID());
+            }
+            return report;
+        });
+
+        assertThatThrownBy(() -> reportService.submitReport(
+                reporterId,
+                ReportRequestDTO.builder()
+                        .targetId(targetId)
+                        .targetType("PRODUCT")
+                        .reason(ReportReason.fake)
+                        .description("Invalid evidence format")
+                        .build(),
+                List.of(TestMultipartFiles.text("files", "report.txt"))
+        ))
+                .isInstanceOfSatisfying(AppException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.REPORT_EVIDENCE_IMAGE_ONLY));
     }
 
     @Test

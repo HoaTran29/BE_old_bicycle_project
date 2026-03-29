@@ -99,7 +99,7 @@ public class AuthController {
     @PatchMapping("/profile")
     public ApiResponse<AuthResponse.UserInfo> updateProfile(
             @AuthenticationPrincipal User currentUser,
-            @RequestBody ProfileUpdateRequest request
+            @Valid @RequestBody ProfileUpdateRequest request
     ) {
         return ApiResponse.<AuthResponse.UserInfo>builder()
                 .result(authService.updateProfile(currentUser, request))

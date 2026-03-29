@@ -23,7 +23,7 @@ public class GlobalExceptionHandler {
         apiResponse.setCode(ErrorCode.UNCATEGORIZED_EXCEPTION.getCode());
         apiResponse.setMessage(ErrorCode.UNCATEGORIZED_EXCEPTION.getMessage());
 
-        return ResponseEntity.badRequest().body(apiResponse);
+        return ResponseEntity.status(ErrorCode.UNCATEGORIZED_EXCEPTION.getStatusCode()).body(apiResponse);
     }
 
     @ExceptionHandler(value = AppException.class)
@@ -50,7 +50,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(value = MethodArgumentNotValidException.class)
     ResponseEntity<ApiResponse<?>> handlingValidation(MethodArgumentNotValidException exception) {
-        String validationMessage = Objects.requireNonNull(exception.getFieldError()).getDefaultMessage();
+        String validationMessage;
+        if (exception.getFieldError() != null) {
+            validationMessage = exception.getFieldError().getDefaultMessage();
+        } else if (exception.getGlobalError() != null) {
+            validationMessage = exception.getGlobalError().getDefaultMessage();
+        } else {
+            validationMessage = ErrorCode.INVALID_REQUEST_BODY.name();
+        }
 
         ErrorCode errorCode = ErrorCode.INVALID_KEY;
         String responseMessage = validationMessage;

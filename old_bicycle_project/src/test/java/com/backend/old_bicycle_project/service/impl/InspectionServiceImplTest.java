@@ -12,11 +12,14 @@ import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.ProductStatus;
+import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.InspectionRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.StorageService;
+import com.backend.old_bicycle_project.support.TestMultipartFiles;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +39,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -275,12 +279,7 @@ class InspectionServiceImplTest {
 
     @Test
     void uploadInspectionReportStoresReportUrlOnExistingInspection() {
-        MockMultipartFile reportFile = new MockMultipartFile(
-                "reportFile",
-                "inspection-report.pdf",
-                "application/pdf",
-                "sample-pdf".getBytes()
-        );
+        MockMultipartFile reportFile = TestMultipartFiles.pdf("reportFile", "inspection-report.pdf");
         inspection.setReportFileUrl("https://cdn.test/old-report.pdf");
 
         when(productRepository.findById(product.getId())).thenReturn(java.util.Optional.of(product));
@@ -294,5 +293,15 @@ class InspectionServiceImplTest {
 
         assertThat(result.getReportFileUrl()).isEqualTo("https://cdn.test/new-report.pdf");
         verify(storageService).deleteFile("https://cdn.test/old-report.pdf");
+    }
+
+    @Test
+    void uploadInspectionReportRejectsNonPdfFile() {
+        MockMultipartFile reportFile = TestMultipartFiles.text("reportFile", "inspection-report.txt");
+
+        assertThatThrownBy(() -> inspectionService.uploadInspectionReport(product.getId(), inspector.getId(), reportFile))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INSPECTION_REPORT_INVALID);
     }
 }

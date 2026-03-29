@@ -63,6 +63,16 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().getMessage()).isEqualTo(ErrorCode.INVALID_REQUEST_BODY.getMessage());
     }
 
+    @Test
+    void handlingRuntimeExceptionReturnsInternalServerError() {
+        ResponseEntity<ApiResponse<?>> response = handler.handlingRuntimeException(new RuntimeException("boom"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(500);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getCode()).isEqualTo(ErrorCode.UNCATEGORIZED_EXCEPTION.getCode());
+        assertThat(response.getBody().getMessage()).isEqualTo(ErrorCode.UNCATEGORIZED_EXCEPTION.getMessage());
+    }
+
     private MethodArgumentNotValidException methodArgumentNotValidException(
             String field,
             Object rejectedValue,

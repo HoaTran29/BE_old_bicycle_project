@@ -35,10 +35,10 @@ import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.ProductService;
 import com.backend.old_bicycle_project.specification.PayoutSpecification;
+import com.backend.old_bicycle_project.validation.PaginationValidationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,7 +92,7 @@ public class PayoutServiceImpl implements PayoutService {
     @Override
     @Transactional(readOnly = true)
     public Page<AdminPayoutResponseDTO> getAdminPayouts(String keyword, PayoutType type, PayoutStatus status, int page, int size) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        var pageable = PaginationValidationUtils.createPageRequest(page, size, Sort.by("createdAt").descending());
         return payoutRepository.findAll(PayoutSpecification.fromAdminFilter(keyword, type, status), pageable)
                 .map(this::mapAdminPayout);
     }

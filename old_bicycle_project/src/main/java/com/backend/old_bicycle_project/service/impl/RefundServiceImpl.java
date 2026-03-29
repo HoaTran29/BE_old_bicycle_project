@@ -33,10 +33,11 @@ import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.RefundService;
 import com.backend.old_bicycle_project.service.StorageService;
 import com.backend.old_bicycle_project.specification.RefundRequestSpecification;
+import com.backend.old_bicycle_project.validation.MultipartFileValidationUtils;
+import com.backend.old_bicycle_project.validation.PaginationValidationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -154,7 +155,7 @@ public class RefundServiceImpl implements RefundService {
     @Override
     @Transactional(readOnly = true)
     public Page<AdminRefundResponseDTO> getAdminRefunds(String keyword, RefundStatus status, int page, int size) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        var pageable = PaginationValidationUtils.createPageRequest(page, size, Sort.by("createdAt").descending());
         Page<RefundRequest> refundPage = refundRequestRepository.findAll(
                 RefundRequestSpecification.fromAdminFilter(keyword, status),
                 pageable
@@ -275,7 +276,7 @@ public class RefundServiceImpl implements RefundService {
     }
 
     private RefundRequest attachEvidenceFiles(RefundRequest refundRequest, List<MultipartFile> files) {
-        List<MultipartFile> normalizedFiles = normalizeFiles(files);
+        List<MultipartFile> normalizedFiles = MultipartFileValidationUtils.normalizeFiles(files);
         validateFiles(normalizedFiles);
 
         if (normalizedFiles.isEmpty()) {
@@ -304,27 +305,13 @@ public class RefundServiceImpl implements RefundService {
         }
     }
 
-    private List<MultipartFile> normalizeFiles(List<MultipartFile> files) {
-        if (files == null || files.isEmpty()) {
-            return List.of();
-        }
-
-        return files.stream()
-                .filter(file -> file != null && !file.isEmpty())
-                .toList();
-    }
-
     private void validateFiles(List<MultipartFile> files) {
-        if (files.size() > MAX_REFUND_EVIDENCE_FILES) {
-            throw new AppException(ErrorCode.REFUND_EVIDENCE_LIMIT_EXCEEDED);
-        }
-
-        for (MultipartFile file : files) {
-            String contentType = file.getContentType();
-            if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
-                throw new AppException(ErrorCode.REFUND_EVIDENCE_IMAGE_ONLY);
-            }
-        }
+        MultipartFileValidationUtils.validateImageFiles(
+                files,
+                MAX_REFUND_EVIDENCE_FILES,
+                ErrorCode.REFUND_EVIDENCE_LIMIT_EXCEEDED,
+                ErrorCode.REFUND_EVIDENCE_IMAGE_ONLY
+        );
     }
 
     private String normalizeText(String value) {

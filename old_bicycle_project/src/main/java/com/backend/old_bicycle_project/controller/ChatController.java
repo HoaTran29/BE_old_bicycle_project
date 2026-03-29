@@ -9,10 +9,10 @@ import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.service.ConversationService;
 import com.backend.old_bicycle_project.service.MessageService;
+import com.backend.old_bicycle_project.validation.PaginationValidationUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -65,8 +65,8 @@ public class ChatController {
             @AuthenticationPrincipal User currentUser,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
-        Pageable pageable = PageRequest.of(page, size);
+
+        Pageable pageable = PaginationValidationUtils.createPageRequest(page, size);
         Page<MessageResponseDTO> messages =
                 messageService.getMessagesByConversation(conversationId, currentUser.getId(), pageable);
         

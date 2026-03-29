@@ -7,10 +7,10 @@ import com.backend.old_bicycle_project.dto.response.ReportResponseDTO;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.ReportStatus;
 import com.backend.old_bicycle_project.service.ReportService;
+import com.backend.old_bicycle_project.validation.PaginationValidationUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
@@ -48,7 +48,7 @@ public class ReportController {
             @AuthenticationPrincipal User currentUser,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Pageable pageable = PaginationValidationUtils.createPageRequest(page, size, Sort.by("createdAt").descending());
         Page<ReportResponseDTO> reports = reportService.getMyReports(currentUser.getId(), pageable);
 
         return ResponseEntity.ok(ApiResponse.<Page<ReportResponseDTO>>builder()
@@ -65,8 +65,8 @@ public class ReportController {
             @RequestParam(required = false) String targetType,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size) {
-        
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+
+        Pageable pageable = PaginationValidationUtils.createPageRequest(page, size, Sort.by("createdAt").descending());
         Page<ReportResponseDTO> reports = reportService.getAllReports(status, targetType, pageable);
         
         return ResponseEntity.ok(ApiResponse.<Page<ReportResponseDTO>>builder()

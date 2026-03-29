@@ -4,9 +4,9 @@ import com.backend.old_bicycle_project.dto.response.ApiResponse;
 import com.backend.old_bicycle_project.dto.response.NotificationResponseDTO;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.service.NotificationService;
+import com.backend.old_bicycle_project.validation.PaginationValidationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,7 +24,7 @@ public class NotificationController {
             @AuthenticationPrincipal User currentUser,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PaginationValidationUtils.createPageRequest(page, size);
         Page<NotificationResponseDTO> notifications =
                 notificationService.getUserNotifications(currentUser.getId(), pageable);
         

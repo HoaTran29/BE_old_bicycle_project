@@ -8,8 +8,10 @@ import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
 import com.backend.old_bicycle_project.entity.enums.OrderEvidenceType;
 import com.backend.old_bicycle_project.exception.AppException;
+import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderEvidenceSubmissionRepository;
 import com.backend.old_bicycle_project.service.StorageService;
+import com.backend.old_bicycle_project.support.TestMultipartFiles;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -68,8 +70,8 @@ class OrderEvidenceServiceImplTest {
     void createSellerHandoverEvidenceUploadsImagesAndPersistsSubmission() {
         Order order = order();
         User seller = user(AppRole.seller);
-        MockMultipartFile firstFile = new MockMultipartFile("files", "handover-1.jpg", "image/jpeg", new byte[]{1});
-        MockMultipartFile secondFile = new MockMultipartFile("files", "handover-2.jpg", "image/jpeg", new byte[]{2});
+        MockMultipartFile firstFile = TestMultipartFiles.image("files", "handover-1.png");
+        MockMultipartFile secondFile = TestMultipartFiles.image("files", "handover-2.png");
 
         when(orderEvidenceSubmissionRepository.existsByOrderIdAndEvidenceType(order.getId(), OrderEvidenceType.seller_handover))
                 .thenReturn(false);
@@ -99,6 +101,19 @@ class OrderEvidenceServiceImplTest {
         assertThat(savedSubmission.getFiles()).hasSize(2);
         assertThat(response.getFiles()).hasSize(2);
         assertThat(response.getNote()).isEqualTo("Đã bàn giao tại cửa hàng");
+    }
+
+    @Test
+    void createSellerHandoverEvidenceRejectsNonImageFile() {
+        assertThatThrownBy(() -> orderEvidenceService.createSellerHandoverEvidence(
+                order(),
+                user(AppRole.seller),
+                "Da giao",
+                List.of(TestMultipartFiles.text("files", "handover.txt"))
+        ))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.ORDER_EVIDENCE_IMAGE_ONLY);
     }
 
     @Test

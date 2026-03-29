@@ -23,10 +23,11 @@ import com.backend.old_bicycle_project.service.InspectionService;
 import com.backend.old_bicycle_project.service.StorageService;
 import com.backend.old_bicycle_project.specification.InspectionSpecification;
 import com.backend.old_bicycle_project.specification.ProductSpecification;
+import com.backend.old_bicycle_project.validation.MultipartFileValidationUtils;
+import com.backend.old_bicycle_project.validation.PaginationValidationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -144,9 +145,7 @@ public class InspectionServiceImpl implements InspectionService {
     @Override
     @Transactional
     public InspectionResponseDTO uploadInspectionReport(UUID productId, UUID inspectorId, MultipartFile reportFile) {
-        if (reportFile == null || reportFile.isEmpty()) {
-            throw new AppException(ErrorCode.INVALID_REQUEST_BODY);
-        }
+        MultipartFileValidationUtils.validatePdfReport(reportFile);
 
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
@@ -179,7 +178,7 @@ public class InspectionServiceImpl implements InspectionService {
     @Override
     @Transactional(readOnly = true)
     public Page<InspectionRequestItemResponseDTO> getInspectionRequests(String keyword, int page, int size) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").ascending());
+        var pageable = PaginationValidationUtils.createPageRequest(page, size, Sort.by("createdAt").ascending());
         Page<Product> requestPage = productRepository.findAll(ProductSpecification.fromInspectionRequestFilter(keyword), pageable);
 
         if (requestPage.isEmpty()) {
@@ -210,7 +209,7 @@ public class InspectionServiceImpl implements InspectionService {
     @Transactional(readOnly = true)
     public Page<InspectionHistoryItemResponseDTO> getInspectionHistory(User currentUser, String keyword, int page, int size) {
         UUID inspectorFilter = isAdmin(currentUser) ? null : currentUser.getId();
-        PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
+        var pageable = PaginationValidationUtils.createPageRequest(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
         Page<Inspection> historyPage = inspectionRepository.findAll(InspectionSpecification.fromHistoryFilter(inspectorFilter, keyword), pageable);
 
         if (historyPage.isEmpty()) {

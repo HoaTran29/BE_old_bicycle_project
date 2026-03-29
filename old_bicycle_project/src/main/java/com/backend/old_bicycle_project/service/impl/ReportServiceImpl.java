@@ -21,6 +21,7 @@ import com.backend.old_bicycle_project.repository.ReportRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
 import com.backend.old_bicycle_project.service.ReportService;
 import com.backend.old_bicycle_project.service.StorageService;
+import com.backend.old_bicycle_project.validation.MultipartFileValidationUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -247,7 +248,7 @@ public class ReportServiceImpl implements ReportService {
     }
 
     private Report attachEvidenceFiles(Report report, List<MultipartFile> files) {
-        List<MultipartFile> normalizedFiles = normalizeFiles(files);
+        List<MultipartFile> normalizedFiles = MultipartFileValidationUtils.normalizeFiles(files);
         validateFiles(normalizedFiles);
 
         if (normalizedFiles.isEmpty()) {
@@ -276,27 +277,13 @@ public class ReportServiceImpl implements ReportService {
         }
     }
 
-    private List<MultipartFile> normalizeFiles(List<MultipartFile> files) {
-        if (files == null || files.isEmpty()) {
-            return List.of();
-        }
-
-        return files.stream()
-                .filter(file -> file != null && !file.isEmpty())
-                .toList();
-    }
-
     private void validateFiles(List<MultipartFile> files) {
-        if (files.size() > MAX_REPORT_EVIDENCE_FILES) {
-            throw new AppException(ErrorCode.REPORT_EVIDENCE_LIMIT_EXCEEDED);
-        }
-
-        for (MultipartFile file : files) {
-            String contentType = file.getContentType();
-            if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
-                throw new AppException(ErrorCode.REPORT_EVIDENCE_IMAGE_ONLY);
-            }
-        }
+        MultipartFileValidationUtils.validateImageFiles(
+                files,
+                MAX_REPORT_EVIDENCE_FILES,
+                ErrorCode.REPORT_EVIDENCE_LIMIT_EXCEEDED,
+                ErrorCode.REPORT_EVIDENCE_IMAGE_ONLY
+        );
     }
 
     private List<ReportEvidenceFileResponseDTO> mapEvidenceFiles(Collection<ReportFile> files) {

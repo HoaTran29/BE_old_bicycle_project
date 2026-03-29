@@ -23,9 +23,9 @@ import com.backend.old_bicycle_project.repository.WishlistRepository;
 import com.backend.old_bicycle_project.service.PasswordPolicyValidator;
 import com.backend.old_bicycle_project.service.AdminUserService;
 import com.backend.old_bicycle_project.specification.UserSpecification;
+import com.backend.old_bicycle_project.validation.PaginationValidationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -58,7 +58,7 @@ public class AdminUserServiceImpl implements AdminUserService {
             int page,
             int size
     ) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        var pageable = PaginationValidationUtils.createPageRequest(page, size, Sort.by("createdAt").descending());
         return userRepository.findAll(
                 UserSpecification.fromAdminFilter(keyword, role, status, verified),
                 pageable
@@ -99,7 +99,7 @@ public class AdminUserServiceImpl implements AdminUserService {
     public AdminUserActivityResponseDTO getUserActivity(UUID userId) {
         User user = getRequiredUser(userId);
 
-        PageRequest topFive = PageRequest.of(0, 5, Sort.by("createdAt").descending());
+        var topFive = PaginationValidationUtils.createPageRequest(0, 5, Sort.by("createdAt").descending());
         List<Product> recentProducts = productRepository.findBySellerIdAndDeletedAtIsNull(userId, topFive).getContent();
         List<Order> recentOrders = orderRepository.findByBuyerIdOrSellerIdOrderByCreatedAtDesc(userId, userId)
                 .stream()

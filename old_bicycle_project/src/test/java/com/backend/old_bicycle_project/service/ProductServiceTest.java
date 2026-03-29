@@ -25,6 +25,7 @@ import com.backend.old_bicycle_project.repository.OrderRepository;
 import com.backend.old_bicycle_project.repository.ProductImageRepository;
 import com.backend.old_bicycle_project.repository.ProductRepository;
 import com.backend.old_bicycle_project.repository.UserRepository;
+import com.backend.old_bicycle_project.support.TestMultipartFiles;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -103,6 +104,22 @@ class ProductServiceTest {
                 .isInstanceOf(AppException.class)
                 .extracting(ex -> ((AppException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.PRODUCT_MINIMUM_IMAGES_REQUIRED);
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    void createRejectsWhenAnyUploadedImageIsNotARealImage() {
+        ProductCreateRequest request = validCreateRequest();
+
+        assertThatThrownBy(() -> productService.create(
+                request,
+                List.of(image("bike-1.png"), image("bike-2.png"), textFile("bike.txt")),
+                seller()
+        ))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.PRODUCT_IMAGE_INVALID);
 
         verify(productRepository, never()).save(any(Product.class));
     }
@@ -475,6 +492,26 @@ class ProductServiceTest {
     }
 
     @Test
+    void searchProductsRejectsInvalidPriceRange() {
+        var filter = new com.backend.old_bicycle_project.dto.product.ProductFilterRequest();
+        filter.setMinPrice(new BigDecimal("20000000"));
+        filter.setMaxPrice(new BigDecimal("10000000"));
+
+        assertThatThrownBy(() -> productService.searchProducts(filter, 0, 12))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_PRICE_RANGE);
+    }
+
+    @Test
+    void getMyProductsRejectsInvalidPagination() {
+        assertThatThrownBy(() -> productService.getMyProducts(seller(), 0, 101))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_PAGINATION);
+    }
+
+    @Test
     void updateRejectsWhenProductHasActiveTransaction() {
         User seller = seller();
         Product product = product(seller, ProductStatus.active);
@@ -613,6 +650,10 @@ class ProductServiceTest {
     }
 
     private MockMultipartFile image(String filename) {
-        return new MockMultipartFile("images", filename, "image/jpeg", "fake-image".getBytes());
+        return TestMultipartFiles.image("images", filename);
+    }
+
+    private MockMultipartFile textFile(String filename) {
+        return TestMultipartFiles.text("images", filename);
     }
 }

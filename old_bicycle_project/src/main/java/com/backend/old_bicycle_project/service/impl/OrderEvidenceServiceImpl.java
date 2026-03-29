@@ -12,6 +12,7 @@ import com.backend.old_bicycle_project.exception.ErrorCode;
 import com.backend.old_bicycle_project.repository.OrderEvidenceSubmissionRepository;
 import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.StorageService;
+import com.backend.old_bicycle_project.validation.MultipartFileValidationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -94,7 +95,7 @@ public class OrderEvidenceServiceImpl implements OrderEvidenceService {
             boolean requireFiles,
             boolean skipWhenEmpty
     ) {
-        List<MultipartFile> normalizedFiles = normalizeFiles(files);
+        List<MultipartFile> normalizedFiles = MultipartFileValidationUtils.normalizeFiles(files);
         String normalizedNote = normalizeNote(note);
 
         if (skipWhenEmpty && normalizedFiles.isEmpty() && normalizedNote == null) {
@@ -137,16 +138,6 @@ public class OrderEvidenceServiceImpl implements OrderEvidenceService {
         }
     }
 
-    private List<MultipartFile> normalizeFiles(List<MultipartFile> files) {
-        if (files == null || files.isEmpty()) {
-            return List.of();
-        }
-
-        return files.stream()
-                .filter(file -> file != null && !file.isEmpty())
-                .toList();
-    }
-
     private String normalizeNote(String note) {
         if (note == null) {
             return null;
@@ -161,16 +152,12 @@ public class OrderEvidenceServiceImpl implements OrderEvidenceService {
             throw new AppException(ErrorCode.ORDER_EVIDENCE_REQUIRED);
         }
 
-        if (files.size() > MAX_EVIDENCE_FILES) {
-            throw new AppException(ErrorCode.ORDER_EVIDENCE_LIMIT_EXCEEDED);
-        }
-
-        for (MultipartFile file : files) {
-            String contentType = file.getContentType();
-            if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
-                throw new AppException(ErrorCode.ORDER_EVIDENCE_IMAGE_ONLY);
-            }
-        }
+        MultipartFileValidationUtils.validateImageFiles(
+                files,
+                MAX_EVIDENCE_FILES,
+                ErrorCode.ORDER_EVIDENCE_LIMIT_EXCEEDED,
+                ErrorCode.ORDER_EVIDENCE_IMAGE_ONLY
+        );
     }
 
     private String buildFolder(UUID orderId, OrderEvidenceType evidenceType) {
