@@ -170,6 +170,16 @@ class PayoutServiceImplTest {
     }
 
     @Test
+    void getAdminPayoutsRejectsInvalidPaginationBeforeQueryingRepository() {
+        assertThatThrownBy(() -> payoutService.getAdminPayouts(null, null, null, -1, 10))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(com.backend.old_bicycle_project.exception.ErrorCode.INVALID_PAGINATION);
+
+        org.mockito.Mockito.verifyNoInteractions(payoutRepository);
+    }
+
+    @Test
     void completeRefundPayoutUpdatesRefundPaymentAndOrder() {
         User admin = user(AppRole.admin, "admin@test.dev");
         User buyer = user(AppRole.buyer, "buyer@test.dev");

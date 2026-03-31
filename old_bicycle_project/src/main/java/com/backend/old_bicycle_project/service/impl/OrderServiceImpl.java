@@ -1,6 +1,5 @@
 package com.backend.old_bicycle_project.service.impl;
 
-import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.OrderCreateRequestDTO;
 import com.backend.old_bicycle_project.dto.response.OrderEvidenceSubmissionResponseDTO;
 import com.backend.old_bicycle_project.dto.response.OrderResponseDTO;
@@ -9,7 +8,6 @@ import com.backend.old_bicycle_project.entity.Payout;
 import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
-import com.backend.old_bicycle_project.entity.enums.NotificationType;
 import com.backend.old_bicycle_project.entity.enums.OrderCancelReason;
 import com.backend.old_bicycle_project.entity.enums.OrderEvidenceType;
 import com.backend.old_bicycle_project.entity.enums.OrderFundingStatus;
@@ -28,36 +26,51 @@ import com.backend.old_bicycle_project.service.OrderEvidenceService;
 import com.backend.old_bicycle_project.service.OrderService;
 import com.backend.old_bicycle_project.service.PayoutService;
 import com.backend.old_bicycle_project.service.PlatformFeeService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
-@RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
-    private final ReviewRepository reviewRepository;
-    private final ApplicationEventPublisher eventPublisher;
     private final PayoutService payoutService;
     private final OrderEvidenceService orderEvidenceService;
     private final PlatformFeeService platformFeeService;
+    private final OrderTransitionSupport orderTransitionSupport;
+    private final OrderViewSupport orderViewSupport;
+
+    public OrderServiceImpl(
+            OrderRepository orderRepository,
+            ProductRepository productRepository,
+            ReviewRepository reviewRepository,
+            ApplicationEventPublisher eventPublisher,
+            PayoutService payoutService,
+            OrderEvidenceService orderEvidenceService,
+            PlatformFeeService platformFeeService
+    ) {
+        this.orderRepository = orderRepository;
+        this.productRepository = productRepository;
+        this.payoutService = payoutService;
+        this.orderEvidenceService = orderEvidenceService;
+        this.platformFeeService = platformFeeService;
+        this.orderTransitionSupport = new OrderTransitionSupport(orderRepository, productRepository, eventPublisher);
+        this.orderViewSupport = new OrderViewSupport(reviewRepository, orderEvidenceService);
+    }
 
     @Override
     @Transactional
     public OrderResponseDTO createOrder(User currentUser, OrderCreateRequestDTO requestDTO) {
-        Product product = lockProduct(requestDTO.getProductId());
+        Product product = orderTransitionSupport.lockProduct(requestDTO.getProductId());
 
         if (product.getSeller().getId().equals(currentUser.getId())) {
             throw new AppException(ErrorCode.FORBIDDEN);
@@ -74,7 +87,11 @@ public class OrderServiceImpl implements OrderService {
         PaymentOption paymentOption = requestDTO.getPaymentOption() != null
                 ? requestDTO.getPaymentOption()
                 : PaymentOption.partial;
-        BigDecimal requiredUpfrontAmount = resolveRequiredUpfrontAmount(requestDTO, product.getPrice(), paymentOption);
+        BigDecimal requiredUpfrontAmount = orderTransitionSupport.resolveRequiredUpfrontAmount(
+                requestDTO,
+                product.getPrice(),
+                paymentOption
+        );
         PlatformFeeService.PlatformFeeQuote platformFeeQuote = platformFeeService.calculate(
                 product.getPrice(),
                 requiredUpfrontAmount,
@@ -112,7 +129,7 @@ public class OrderServiceImpl implements OrderService {
                 .status(OrderStatus.pending)
                 .build());
 
-        return mapToDTO(order);
+        return orderViewSupport.mapToDTO(order);
     }
 
     @Override
@@ -121,30 +138,15 @@ public class OrderServiceImpl implements OrderService {
         List<Order> orders = currentUser.getRole() == AppRole.admin
                 ? orderRepository.findAllByOrderByCreatedAtDesc()
                 : orderRepository.findByBuyerIdOrSellerIdOrderByCreatedAtDesc(currentUser.getId(), currentUser.getId());
-
-        Set<UUID> reviewedOrderIds = orders.isEmpty()
-                ? Collections.emptySet()
-                : reviewRepository.findReviewedOrderIdsByOrderIds(
-                orders.stream().map(Order::getId).toList()
-        );
-        Map<UUID, Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO>> evidenceByOrder =
-                orderEvidenceService.getEvidenceByOrderIds(orders.stream().map(Order::getId).toList());
-
-        return orders.stream()
-                .map(order -> mapToDTO(
-                        order,
-                        reviewedOrderIds.contains(order.getId()),
-                        evidenceByOrder.getOrDefault(order.getId(), Collections.emptyMap())
-                ))
-                .toList();
+        return orderViewSupport.mapOrders(orders);
     }
 
     @Override
     @Transactional
     public OrderResponseDTO acceptOrder(UUID orderId, User currentUser) {
-        Order order = getOrder(orderId);
-        validateSellerOrAdmin(order, currentUser);
-        lockProduct(order.getProduct().getId());
+        Order order = orderTransitionSupport.getOrder(orderId);
+        orderTransitionSupport.validateSellerOrAdmin(order, currentUser);
+        orderTransitionSupport.lockProduct(order.getProduct().getId());
 
         if (order.getStatus() != OrderStatus.pending || order.getFundingStatus() != OrderFundingStatus.unpaid) {
             throw new AppException(ErrorCode.INVALID_STATUS);
@@ -163,23 +165,23 @@ public class OrderServiceImpl implements OrderService {
         order.setCancelReason(null);
         order.setCancelledAt(null);
         order = orderRepository.save(order);
-        rejectCompetingPendingOffers(order, acceptedAt);
+        orderTransitionSupport.rejectCompetingPendingOffers(order, acceptedAt);
 
-        publishOrderNotification(
+        orderTransitionSupport.publishOrderNotification(
                 order.getBuyer().getId(),
                 "Yêu cầu đặt cọc đã được chấp nhận",
                 "Người bán đã chấp nhận đơn hàng và bạn có thể thanh toán tiền ứng trước.",
                 "{\"orderId\":\"" + order.getId() + "\"}"
         );
 
-        return mapToDTO(order);
+        return orderViewSupport.mapToDTO(order);
     }
 
     @Override
     @Transactional
     public OrderResponseDTO confirmDeposit(UUID orderId, User currentUser) {
-        Order order = getOrder(orderId);
-        validateSellerOrAdmin(order, currentUser);
+        Order order = orderTransitionSupport.getOrder(orderId);
+        orderTransitionSupport.validateSellerOrAdmin(order, currentUser);
 
         if (order.getStatus() != OrderStatus.pending) {
             throw new AppException(ErrorCode.INVALID_STATUS);
@@ -194,7 +196,7 @@ public class OrderServiceImpl implements OrderService {
             throw new AppException(ErrorCode.PAYMENT_NOT_READY);
         }
         if (order.getPaymentDeadline() != null && order.getPaymentDeadline().isBefore(LocalDateTime.now())) {
-            expirePendingPaymentOrder(order, LocalDateTime.now());
+            orderTransitionSupport.expirePendingPaymentOrder(order, LocalDateTime.now());
             throw new AppException(ErrorCode.PAYMENT_EXPIRED);
         }
 
@@ -202,14 +204,14 @@ public class OrderServiceImpl implements OrderService {
         order.setPaidAmount(order.getRequiredUpfrontAmount());
         order.setRemainingAmount(order.getTotalAmount().subtract(order.getRequiredUpfrontAmount()));
         order.setFundingStatus(OrderFundingStatus.held);
-        return mapToDTO(orderRepository.save(order));
+        return orderViewSupport.mapToDTO(orderRepository.save(order));
     }
 
     @Override
     @Transactional
     public OrderResponseDTO completeOrder(UUID orderId, User currentUser, String note, List<MultipartFile> files) {
-        Order order = getOrder(orderId);
-        validateSellerOrAdmin(order, currentUser);
+        Order order = orderTransitionSupport.getOrder(orderId);
+        orderTransitionSupport.validateSellerOrAdmin(order, currentUser);
 
         if (order.getStatus() != OrderStatus.deposited) {
             throw new AppException(ErrorCode.INVALID_STATUS);
@@ -220,16 +222,15 @@ public class OrderServiceImpl implements OrderService {
         OrderEvidenceSubmissionResponseDTO sellerEvidence =
                 orderEvidenceService.createSellerHandoverEvidence(order, currentUser, note, files);
 
-        publishOrderNotification(
+        orderTransitionSupport.publishOrderNotification(
                 order.getBuyer().getId(),
                 "Người bán đã báo giao xe",
                 "Hãy xác nhận bạn đã nhận xe để hệ thống chuyển sang bước giải ngân cho người bán.",
                 "{\"orderId\":\"" + order.getId() + "\"}"
         );
 
-        return mapToDTO(
+        return orderViewSupport.mapToDTO(
                 order,
-                reviewRepository.existsByOrderId(order.getId()),
                 Map.of(OrderEvidenceType.seller_handover, sellerEvidence)
         );
     }
@@ -237,8 +238,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponseDTO confirmReceived(UUID orderId, User currentUser, String note, List<MultipartFile> files) {
-        Order order = getOrder(orderId);
-        validateBuyerOrAdmin(order, currentUser);
+        Order order = orderTransitionSupport.getOrder(orderId);
+        orderTransitionSupport.validateBuyerOrAdmin(order, currentUser);
 
         if (order.getStatus() != OrderStatus.awaiting_buyer_confirmation
                 || order.getFundingStatus() != OrderFundingStatus.held) {
@@ -262,7 +263,7 @@ public class OrderServiceImpl implements OrderService {
             evidenceByType.put(OrderEvidenceType.buyer_receipt, buyerEvidence);
         }
 
-        publishOrderNotification(
+        orderTransitionSupport.publishOrderNotification(
                 order.getSeller().getId(),
                 "Người mua đã xác nhận nhận xe",
                 payout.getStatus() == PayoutStatus.profile_required
@@ -271,17 +272,13 @@ public class OrderServiceImpl implements OrderService {
                 "{\"orderId\":\"" + order.getId() + "\",\"payoutId\":\"" + payout.getId() + "\"}"
         );
 
-        return mapToDTO(
-                order,
-                reviewRepository.existsByOrderId(order.getId()),
-                evidenceByType
-        );
+        return orderViewSupport.mapToDTO(order, evidenceByType);
     }
 
     @Override
     @Transactional
     public OrderResponseDTO cancelOrder(UUID orderId, User currentUser) {
-        Order order = getOrder(orderId);
+        Order order = orderTransitionSupport.getOrder(orderId);
         boolean wasSellerReviewRequest = order.getStatus() == OrderStatus.pending
                 && order.getFundingStatus() == OrderFundingStatus.unpaid
                 && order.getAcceptedAt() == null;
@@ -310,7 +307,8 @@ public class OrderServiceImpl implements OrderService {
         if (order.getFundingStatus() == OrderFundingStatus.awaiting_payment) {
             order.setFundingStatus(OrderFundingStatus.unpaid);
         }
-        if (isUnpaidOrAwaitingPayment(order) && order.getPlatformFeeStatus() == PlatformFeeStatus.pending) {
+        if (orderTransitionSupport.isUnpaidOrAwaitingPayment(order)
+                && order.getPlatformFeeStatus() == PlatformFeeStatus.pending) {
             order.setPlatformFeeStatus(PlatformFeeStatus.not_applicable);
             order.setPlatformFeeRecognizedAt(null);
             order.setPlatformFeeReversedAt(null);
@@ -326,216 +324,7 @@ public class OrderServiceImpl implements OrderService {
             order.setCancelReason(OrderCancelReason.buyer_cancelled);
         }
         Order savedOrder = orderRepository.save(order);
-        publishCancellationNotifications(savedOrder, currentUser);
-        return mapToDTO(savedOrder);
-    }
-
-    private BigDecimal resolveRequiredUpfrontAmount(
-            OrderCreateRequestDTO requestDTO,
-            BigDecimal totalAmount,
-            PaymentOption paymentOption
-    ) {
-        if (paymentOption == PaymentOption.full) {
-            return totalAmount;
-        }
-
-        BigDecimal requestedAmount = requestDTO.getUpfrontAmount() != null
-                ? requestDTO.getUpfrontAmount()
-                : requestDTO.getDepositAmount();
-        if (requestedAmount == null || requestedAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        }
-        if (requestedAmount.compareTo(totalAmount) > 0) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        }
-        return requestedAmount;
-    }
-
-    private boolean isUnpaidOrAwaitingPayment(Order order) {
-        return order.getFundingStatus() == OrderFundingStatus.unpaid
-                || order.getFundingStatus() == OrderFundingStatus.awaiting_payment;
-    }
-
-    private Order getOrder(UUID orderId) {
-        return orderRepository.findById(orderId)
-                .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
-    }
-
-    private void validateSellerOrAdmin(Order order, User currentUser) {
-        boolean isSellerOrAdmin = currentUser.getRole() == AppRole.admin
-                || order.getSeller().getId().equals(currentUser.getId());
-        if (!isSellerOrAdmin) {
-            throw new AppException(ErrorCode.FORBIDDEN);
-        }
-    }
-
-    private void validateBuyerOrAdmin(Order order, User currentUser) {
-        boolean isBuyerOrAdmin = currentUser.getRole() == AppRole.admin
-                || order.getBuyer().getId().equals(currentUser.getId());
-        if (!isBuyerOrAdmin) {
-            throw new AppException(ErrorCode.FORBIDDEN);
-        }
-    }
-
-    private void publishOrderNotification(UUID userId, String title, String content, String metadata) {
-        eventPublisher.publishEvent(new NotificationEvent(
-                this,
-                userId,
-                title,
-                content,
-                NotificationType.order,
-                metadata
-        ));
-    }
-
-    private void expirePendingPaymentOrder(Order order, LocalDateTime expiredAt) {
-        order.setStatus(OrderStatus.cancelled);
-        order.setFundingStatus(OrderFundingStatus.unpaid);
-        order.setCancelReason(OrderCancelReason.payment_expired);
-        order.setCancelledAt(expiredAt);
-        orderRepository.save(order);
-
-        String metadata = "{\"orderId\":\"" + order.getId() + "\"}";
-        publishOrderNotification(
-                order.getBuyer().getId(),
-                "Đơn hàng đã hết hạn thanh toán",
-                "Bạn chưa hoàn tất thanh toán đúng hạn nên hệ thống đã tự hủy đơn hàng này.",
-                metadata
-        );
-        publishOrderNotification(
-                order.getSeller().getId(),
-                "Đơn hàng tự hủy vì quá hạn thanh toán",
-                "Người mua chưa thanh toán đúng hạn nên hệ thống đã tự hủy đơn hàng này.",
-                metadata
-        );
-    }
-
-    private void publishCancellationNotifications(Order order, User actor) {
-        String metadata = "{\"orderId\":\"" + order.getId() + "\"}";
-
-        if (actor.getRole() == AppRole.admin) {
-            publishOrderNotification(
-                    order.getBuyer().getId(),
-                    "Đơn hàng đã bị admin hủy",
-                    "Admin đã hủy đơn hàng này trước khi giao dịch hoàn tất.",
-                    metadata
-            );
-            publishOrderNotification(
-                    order.getSeller().getId(),
-                    "Đơn hàng đã bị admin hủy",
-                    "Admin đã hủy đơn hàng này trước khi giao dịch hoàn tất.",
-                    metadata
-            );
-            return;
-        }
-
-        if (order.getSeller().getId().equals(actor.getId())) {
-            publishOrderNotification(
-                    order.getBuyer().getId(),
-                    order.getCancelReason() == OrderCancelReason.seller_rejected
-                            ? "Yêu cầu mua đã bị từ chối"
-                            : "Đơn hàng đã bị người bán hủy",
-                    order.getCancelReason() == OrderCancelReason.seller_rejected
-                            ? "Người bán đã từ chối yêu cầu mua này."
-                            : "Người bán đã hủy đơn hàng này trước khi giao dịch hoàn tất.",
-                    metadata
-            );
-            return;
-        }
-
-        publishOrderNotification(
-                order.getSeller().getId(),
-                "Người mua đã hủy đơn hàng",
-                "Người mua đã hủy đơn hàng này trước khi giao dịch hoàn tất.",
-                metadata
-        );
-    }
-
-    private void rejectCompetingPendingOffers(Order acceptedOrder, LocalDateTime decisionAt) {
-        List<Order> competingOrders = orderRepository.findByProductIdAndStatusAndFundingStatusOrderByCreatedAtAsc(
-                acceptedOrder.getProduct().getId(),
-                OrderStatus.pending,
-                OrderFundingStatus.unpaid
-        );
-
-        List<Order> rejectedOrders = competingOrders.stream()
-                .filter(order -> !order.getId().equals(acceptedOrder.getId()))
-                .peek(order -> {
-                    order.setStatus(OrderStatus.cancelled);
-                    order.setCancelReason(OrderCancelReason.seller_rejected);
-                    order.setCancelledAt(decisionAt);
-                })
-                .toList();
-
-        if (rejectedOrders.isEmpty()) {
-            return;
-        }
-
-        orderRepository.saveAll(rejectedOrders);
-        rejectedOrders.forEach(order -> publishOrderNotification(
-                order.getBuyer().getId(),
-                "Yêu cầu mua không được chọn",
-                "Người bán đã chọn một yêu cầu mua khác cho xe này. Đơn của bạn đã được chuyển sang trạng thái từ chối.",
-                "{\"orderId\":\"" + order.getId() + "\",\"productId\":\"" + order.getProduct().getId() + "\"}"
-        ));
-    }
-
-    private Product lockProduct(UUID productId) {
-        return productRepository.findByIdForUpdate(productId)
-                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
-    }
-
-    private OrderResponseDTO mapToDTO(Order order) {
-        return mapToDTO(
-                order,
-                reviewRepository.existsByOrderId(order.getId()),
-                orderEvidenceService.getEvidenceByOrderId(order.getId())
-        );
-    }
-
-    private OrderResponseDTO mapToDTO(
-            Order order,
-            boolean buyerReviewSubmitted,
-            Map<OrderEvidenceType, OrderEvidenceSubmissionResponseDTO> evidenceByType
-    ) {
-        return OrderResponseDTO.builder()
-                .id(order.getId())
-                .productId(order.getProduct().getId())
-                .productTitle(order.getProduct().getTitle())
-                .buyerId(order.getBuyer().getId())
-                .buyerName(order.getBuyer().getFullName())
-                .sellerId(order.getSeller().getId())
-                .sellerName(order.getSeller().getFullName())
-                .totalAmount(order.getTotalAmount())
-                .depositAmount(order.getDepositAmount())
-                .requiredUpfrontAmount(order.getRequiredUpfrontAmount())
-                .paidAmount(order.getPaidAmount())
-                .remainingAmount(order.getRemainingAmount())
-                .serviceFee(order.getServiceFee())
-                .feeBaseAmount(order.getFeeBaseAmount())
-                .platformFeeRate(order.getPlatformFeeRate())
-                .platformFeeTotal(order.getPlatformFeeTotal())
-                .buyerFeeAmount(order.getBuyerFeeAmount())
-                .sellerFeeAmount(order.getSellerFeeAmount())
-                .buyerChargeAmount(order.getBuyerChargeAmount())
-                .sellerGrossPayoutAmount(order.getSellerGrossPayoutAmount())
-                .sellerNetPayoutAmount(order.getSellerNetPayoutAmount())
-                .platformFeeStatus(order.getPlatformFeeStatus())
-                .platformFeeRecognizedAt(order.getPlatformFeeRecognizedAt())
-                .platformFeeReversedAt(order.getPlatformFeeReversedAt())
-                .paymentOption(order.getPaymentOption())
-                .status(order.getStatus())
-                .fundingStatus(order.getFundingStatus())
-                .paymentMethod(order.getPaymentMethod())
-                .buyerReviewSubmitted(buyerReviewSubmitted)
-                .sellerHandoverEvidence(evidenceByType.get(OrderEvidenceType.seller_handover))
-                .buyerReceiptEvidence(evidenceByType.get(OrderEvidenceType.buyer_receipt))
-                .acceptedAt(order.getAcceptedAt())
-                .paymentDeadline(order.getPaymentDeadline())
-                .cancelReason(order.getCancelReason())
-                .cancelledAt(order.getCancelledAt())
-                .createdAt(order.getCreatedAt())
-                .updatedAt(order.getUpdatedAt())
-                .build();
+        orderTransitionSupport.publishCancellationNotifications(savedOrder, currentUser);
+        return orderViewSupport.mapToDTO(savedOrder);
     }
 }
