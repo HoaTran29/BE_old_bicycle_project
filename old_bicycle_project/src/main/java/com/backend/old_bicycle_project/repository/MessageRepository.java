@@ -19,6 +19,15 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
 
     Optional<Message> findFirstByConversationIdOrderByCreatedAtDesc(UUID conversationId);
 
+    @Query("""
+            SELECT COUNT(m)
+            FROM Message m
+            WHERE m.conversation.id = :conversationId
+              AND m.sender.id <> :userId
+              AND m.isRead = false
+            """)
+    long countUnreadMessagesForUser(@Param("conversationId") UUID conversationId, @Param("userId") UUID userId);
+
     @Modifying
     @Query("UPDATE Message m SET m.isRead = true WHERE m.conversation.id = :conversationId AND m.sender.id != :userId AND m.isRead = false")
     void markMessagesAsRead(@Param("conversationId") UUID conversationId, @Param("userId") UUID userId);

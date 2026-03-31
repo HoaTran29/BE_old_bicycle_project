@@ -82,7 +82,7 @@ public class AuthService {
         EmailVerification verificationToken = emailService.createVerificationToken(user);
         emailService.sendVerificationEmail(user, verificationToken.getToken());
 
-        return "Dang ky thanh cong. Vui long kiem tra email de xac thuc tai khoan.";
+        return "Đăng ký thành công. Vui lòng kiểm tra email để xác thực tài khoản.";
     }
 
     @Transactional
@@ -105,8 +105,7 @@ public class AuthService {
 
         try {
             authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword())
-            );
+                    new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword()));
         } catch (DisabledException exception) {
             throw new AppException(ErrorCode.ACCOUNT_INACTIVE);
         } catch (LockedException exception) {
@@ -148,7 +147,7 @@ public class AuthService {
                     emailService.sendPasswordResetEmail(user, passwordResetToken.getToken());
                 });
 
-        return "Neu email ton tai, he thong da gui huong dan dat lai mat khau.";
+        return "Nếu email tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu.";
     }
 
     @Transactional
@@ -170,7 +169,7 @@ public class AuthService {
         refreshTokenService.deleteAllByUser(user);
         emailService.deletePasswordResetTokensByUser(user);
 
-        return "Dat lai mat khau thanh cong. Vui long dang nhap lai.";
+        return "Đã đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.";
     }
 
     @Transactional
@@ -195,14 +194,14 @@ public class AuthService {
 
         User user = verification.getUser();
         if (user.isVerified()) {
-            return "Tai khoan da duoc xac thuc truoc do.";
+            return "Tài khoản đã được xác thực trước đó.";
         }
 
         user.setVerified(true);
         userRepository.save(user);
         emailService.deleteByUser(user);
 
-        return "Xac thuc email thanh cong.";
+        return "Đã xác thực email thành công. Vui lòng đăng nhập lại.";
     }
 
     public AuthResponse.UserInfo getCurrentUser(User currentUser) {
@@ -245,7 +244,7 @@ public class AuthService {
         userRepository.save(user);
         refreshTokenService.deleteAllByUser(user);
 
-        return "Doi mat khau thanh cong. Cac phien dang nhap cu da bi thu hoi.";
+        return "Đã đổi mật khẩu thành công. Các phiên đăng nhập cũ đã bị thu hồi.";
     }
 
     private AuthResponse buildAuthResponse(User user, String accessToken, String refreshToken) {

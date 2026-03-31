@@ -1,5 +1,6 @@
 package com.backend.old_bicycle_project.service.impl;
 
+import com.backend.old_bicycle_project.config.NotificationEvent;
 import com.backend.old_bicycle_project.dto.request.OrderCreateRequestDTO;
 import com.backend.old_bicycle_project.dto.response.OrderEvidenceSubmissionResponseDTO;
 import com.backend.old_bicycle_project.dto.response.OrderResponseDTO;
@@ -132,6 +133,117 @@ class OrderServiceImplTest {
         assertThat(response.getRequiredUpfrontAmount()).isEqualByComparingTo("12000000");
         assertThat(response.getRemainingAmount()).isEqualByComparingTo("12000000");
         assertThat(response.getPaymentMethod()).isEqualTo(PaymentMethod.transfer);
+    }
+
+    @Test
+    void createOrderAllowsNewBuyerAfterPreviousOrderExpiredAndLockReleased() {
+        User buyer = user(AppRole.buyer, "new-buyer@test.dev");
+        User seller = user(AppRole.seller, "seller@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Specialized Allez")
+                .price(new BigDecimal("12000000"))
+                .status(ProductStatus.active)
+                .build();
+
+        OrderCreateRequestDTO request = OrderCreateRequestDTO.builder()
+                .productId(product.getId())
+                .paymentOption(PaymentOption.partial)
+                .upfrontAmount(new BigDecimal("3000000"))
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+
+        when(productRepository.findByIdForUpdate(product.getId())).thenReturn(java.util.Optional.of(product));
+        when(orderRepository.existsExclusiveOrderLockByProductId(product.getId())).thenReturn(false);
+        when(reviewRepository.existsByOrderId(any(UUID.class))).thenReturn(false);
+        when(orderEvidenceService.getEvidenceByOrderId(any(UUID.class))).thenReturn(java.util.Collections.emptyMap());
+        when(platformFeeService.calculate(
+                product.getPrice(),
+                new BigDecimal("3000000"),
+                PaymentMethod.transfer
+        )).thenReturn(new PlatformFeeService.PlatformFeeQuote(
+                product.getPrice(),
+                new BigDecimal("0.0200"),
+                new BigDecimal("240000"),
+                new BigDecimal("120000"),
+                new BigDecimal("120000"),
+                new BigDecimal("3120000"),
+                product.getPrice(),
+                new BigDecimal("11880000"),
+                com.backend.old_bicycle_project.entity.enums.PlatformFeeStatus.pending
+        ));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            order.setId(UUID.randomUUID());
+            return order;
+        });
+
+        OrderResponseDTO response = orderService.createOrder(buyer, request);
+
+        assertThat(response.getStatus()).isEqualTo(OrderStatus.pending);
+        assertThat(response.getFundingStatus()).isEqualTo(OrderFundingStatus.unpaid);
+        assertThat(response.getBuyerId()).isEqualTo(buyer.getId());
+        assertThat(response.getProductId()).isEqualTo(product.getId());
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.active);
+        verify(orderRepository).existsExclusiveOrderLockByProductId(product.getId());
+        verify(orderRepository).save(any(Order.class));
+    }
+
+    @Test
+    void createOrderPublishesNotificationForSeller() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        User seller = user(AppRole.seller, "seller@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Giant Contend")
+                .price(new BigDecimal("10000000"))
+                .status(ProductStatus.active)
+                .build();
+
+        OrderCreateRequestDTO request = OrderCreateRequestDTO.builder()
+                .productId(product.getId())
+                .paymentOption(PaymentOption.partial)
+                .upfrontAmount(new BigDecimal("2000000"))
+                .paymentMethod(PaymentMethod.transfer)
+                .build();
+
+        when(productRepository.findByIdForUpdate(product.getId())).thenReturn(java.util.Optional.of(product));
+        when(orderRepository.existsExclusiveOrderLockByProductId(product.getId())).thenReturn(false);
+        when(platformFeeService.calculate(
+                product.getPrice(),
+                new BigDecimal("2000000"),
+                PaymentMethod.transfer
+        )).thenReturn(new PlatformFeeService.PlatformFeeQuote(
+                product.getPrice(),
+                new BigDecimal("0.0200"),
+                new BigDecimal("200000"),
+                new BigDecimal("100000"),
+                new BigDecimal("100000"),
+                new BigDecimal("2100000"),
+                product.getPrice(),
+                new BigDecimal("9900000"),
+                com.backend.old_bicycle_project.entity.enums.PlatformFeeStatus.pending
+        ));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            if (order.getId() == null) {
+                order.setId(UUID.randomUUID());
+            }
+            return order;
+        });
+
+        orderService.createOrder(buyer, request);
+
+        ArgumentCaptor<NotificationEvent> eventCaptor = ArgumentCaptor.forClass(NotificationEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        NotificationEvent notificationEvent = eventCaptor.getValue();
+        assertThat(notificationEvent.getUserId()).isEqualTo(seller.getId());
+        assertThat(notificationEvent.getTitle()).isEqualTo("Có yêu cầu mua mới");
+        assertThat(notificationEvent.getContent()).contains(product.getTitle());
+        assertThat(notificationEvent.getMetadata()).contains(product.getId().toString());
     }
 
     @Test

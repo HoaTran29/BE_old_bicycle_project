@@ -19,5 +19,9 @@ public interface ConversationRepository extends JpaRepository<Conversation, UUID
     @Query("SELECT COUNT(c) FROM Conversation c WHERE c.buyer.id = :userId OR c.seller.id = :userId")
     long countConversationsByUserId(@Param("userId") UUID userId);
 
-    Optional<Conversation> findByProductIdAndBuyerId(UUID productId, UUID buyerId);
+    Optional<Conversation> findFirstByProductIdAndBuyerIdAndSellerIdOrderByCreatedAtAsc(
+            UUID productId,
+            UUID buyerId,
+            UUID sellerId
+    );
 }

@@ -103,7 +103,7 @@ class AuthServiceTest {
         assertThat(savedUser.getPasswordHash()).isEqualTo("encoded-password");
         assertThat(savedUser.getRole()).isEqualTo(AppRole.seller);
         assertThat(savedUser.getPhone()).isEqualTo("0909000999");
-        assertThat(message).contains("Dang ky thanh cong");
+        assertThat(message).contains("Đăng ký thành công");
     }
 
     @Test
@@ -160,7 +160,7 @@ class AuthServiceTest {
         }});
 
         verify(emailService).sendPasswordResetEmail(user, "reset-token");
-        assertThat(message).contains("Neu email ton tai");
+        assertThat(message).contains("Nếu email tồn tại");
     }
 
     @Test
@@ -365,7 +365,7 @@ class AuthServiceTest {
         assertThat(user.getPasswordHash()).isEqualTo("new-encoded-password");
         verify(refreshTokenService).deleteAllByUser(user);
         verify(emailService).deletePasswordResetTokensByUser(user);
-        assertThat(message).contains("Dat lai mat khau thanh cong");
+        assertThat(message).contains("Đã đặt lại mật khẩu thành công");
     }
 
     @Test
@@ -407,7 +407,7 @@ class AuthServiceTest {
 
         assertThat(currentUser.getPasswordHash()).isEqualTo("fresh-hash");
         verify(refreshTokenService).deleteAllByUser(currentUser);
-        assertThat(message).contains("Doi mat khau thanh cong");
+        assertThat(message).contains("Đã đổi mật khẩu thành công");
     }
 
     @Test

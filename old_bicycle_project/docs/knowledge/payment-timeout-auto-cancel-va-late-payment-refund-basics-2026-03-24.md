@@ -250,3 +250,71 @@ Ngay cả cash order, nếu hai bên không xác nhận đúng hạn thì order 
 - [PaymentRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/PaymentRepository.java)
 - [OrderRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/OrderRepository.java)
 - [RefundRequestRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/RefundRequestRepository.java)
+
+## 10. Bổ sung ngày 2026-03-31: order quá hạn có làm sản phẩm public lại không?
+
+Có, theo hành vi hiện tại thì order quá hạn thanh toán sẽ làm mất khóa giao dịch độc quyền, nhưng không tự ẩn sản phẩm.
+
+Nói đơn giản hơn:
+
+- order bị chuyển sang `cancelled`
+- `funding_status` về `unpaid`
+- payment đang mở bị chuyển sang `expired`
+- nhưng `product.status` không bị đổi sang `hidden`
+
+Điều này có nghĩa là nếu sản phẩm trước đó đang `active`, nó vẫn giữ `active`.
+
+### Vì sao lại như vậy?
+
+Flow timeout nằm ở:
+
+- [PaymentServiceImpl.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/impl/PaymentServiceImpl.java)
+- [PaymentSettlementSupport.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/impl/PaymentSettlementSupport.java)
+
+Khi scheduler hoặc API đi vào nhánh hết hạn, code chỉ cập nhật `order` và `payment`. Không có lệnh nào đổi `product.setStatus(...)` trong nhánh timeout này.
+
+Khóa public của sản phẩm trong dự án không chỉ nhìn vào `product.status`, mà còn nhìn vào trạng thái order đang giữ chỗ.
+
+Query khóa độc quyền nằm ở:
+
+- [OrderRepository.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/repository/OrderRepository.java)
+
+Query đó chỉ xem là đang khóa khi:
+
+- `pending + awaiting_payment`
+- `deposited`
+- `awaiting_buyer_confirmation`
+
+Sau khi timeout:
+
+- order thành `cancelled`
+- nên không còn nằm trong nhóm khóa này nữa
+
+Kết quả là sản phẩm không bị ẩn, và cũng không còn bị giữ chỗ bởi order đã hết hạn.
+
+### Test regression đã thêm
+
+File test:
+
+- [PaymentServiceImplTest.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/test/java/com/backend/old_bicycle_project/service/impl/PaymentServiceImplTest.java)
+
+Test mới:
+
+- `expireOverdueUpfrontPaymentsDoesNotHideProductAfterTimeout()`
+
+Test này kiểm tra:
+
+1. order quá hạn bị chuyển sang `cancelled`
+2. `funding_status` về `unpaid`
+3. `product.status` vẫn là `active`
+
+### Phân biệt với case refund muộn
+
+Đừng nhầm với case `late payment`.
+
+Nếu tiền vào sau khi order đã hủy, hệ thống sẽ chuyển sang nhánh `refund_pending_transfer`. Ở nhánh đó, khi admin hoàn tất refund thủ công, code mới gọi:
+
+- [PayoutExecutionSupport.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/impl/PayoutExecutionSupport.java)
+- [ProductService.java](/e:/Old_bicycle_system/BE_old_bicycle_project/old_bicycle_project/src/main/java/com/backend/old_bicycle_project/service/ProductService.java)
+
+và lúc đó sản phẩm mới bị chuyển sang `hidden`.

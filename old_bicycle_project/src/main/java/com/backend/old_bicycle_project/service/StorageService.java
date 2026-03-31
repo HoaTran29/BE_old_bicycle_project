@@ -17,11 +17,11 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.regex.Pattern;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
- * Service upload ảnh lên Supabase Storage qua REST API.
+ * Service upload file lên Supabase Storage qua REST API.
  * Supabase Storage endpoint: https://<project-id>.supabase.co/storage/v1/object/<bucket>/<path>
  */
 @Service
@@ -46,21 +46,24 @@ public class StorageService {
     private final RestTemplate restTemplate;
 
     /**
-     * Upload file lên Supabase Storage, trả về public URL.
-     *
-     * @param file   file ảnh từ multipart request
-     * @param folder folder trong bucket, ví dụ "products/{productId}"
-     * @return public URL của file đã upload
+     * Upload file lên bucket mặc định.
      */
     public String uploadFile(MultipartFile file, String folder) {
+        return uploadFile(file, folder, bucket);
+    }
+
+    /**
+     * Upload file lên bucket chỉ định và trả về public URL.
+     */
+    public String uploadFile(MultipartFile file, String folder, String bucketName) {
         if (file == null || file.isEmpty()) {
             throw new AppException(ErrorCode.INVALID_REQUEST_BODY);
         }
 
+        String normalizedBucket = normalizeBucket(bucketName);
         String normalizedFolder = normalizeFolder(folder);
         String filename = UUID.randomUUID() + "_" + sanitizeFilename(file.getOriginalFilename());
         String path = normalizedFolder + "/" + filename;
-        String uploadUrl = supabaseUrl + "/storage/v1/object/" + bucket + "/" + path;
 
         HttpHeaders headers = new HttpHeaders();
         applyStorageAuthorization(headers);
@@ -69,40 +72,48 @@ public class StorageService {
         try {
             HttpEntity<byte[]> requestEntity = new HttpEntity<>(file.getBytes(), headers);
             ResponseEntity<String> response = restTemplate.exchange(
-                    uploadUrl, HttpMethod.POST, requestEntity, String.class
+                    buildObjectUrl(normalizedBucket, path),
+                    HttpMethod.POST,
+                    requestEntity,
+                    String.class
             );
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                return supabaseUrl + "/storage/v1/object/public/" + bucket + "/" + path;
+                return buildPublicUrl(normalizedBucket, path);
             }
-            throw new RuntimeException("Upload ảnh thất bại: " + response.getStatusCode());
-        } catch (IOException e) {
-            throw new RuntimeException("Không thể đọc file: " + e.getMessage(), e);
+            throw new RuntimeException("Upload file thất bại: " + response.getStatusCode());
+        } catch (IOException exception) {
+            throw new RuntimeException("Không thể đọc file: " + exception.getMessage(), exception);
         }
     }
 
     /**
-     * Xóa file khỏi Supabase Storage.
-     *
-     * @param fileUrl public URL của file cần xóa
+     * Xóa file khỏi Supabase Storage dựa trên public URL.
      */
     public void deleteFile(String fileUrl) {
-        String prefix = supabaseUrl + "/storage/v1/object/public/" + bucket + "/";
-        if (!fileUrl.startsWith(prefix)) {
+        StorageObjectLocation storageObjectLocation = resolveStorageObjectLocation(fileUrl);
+        if (storageObjectLocation == null) {
             return;
         }
-
-        String path = fileUrl.substring(prefix.length());
-        String deleteUrl = supabaseUrl + "/storage/v1/object/" + bucket + "/" + path;
 
         HttpHeaders headers = new HttpHeaders();
         applyStorageAuthorization(headers);
 
         try {
-            restTemplate.exchange(deleteUrl, HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
-            log.info("Đã xóa file: {}", path);
-        } catch (Exception e) {
-            log.warn("Không thể xóa file {}: {}", path, e.getMessage());
+            restTemplate.exchange(
+                    buildObjectUrl(storageObjectLocation.bucket(), storageObjectLocation.path()),
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(headers),
+                    String.class
+            );
+            log.info("Đã xóa file: {}/{}", storageObjectLocation.bucket(), storageObjectLocation.path());
+        } catch (Exception exception) {
+            log.warn(
+                    "Không thể xóa file {}/{}: {}",
+                    storageObjectLocation.bucket(),
+                    storageObjectLocation.path(),
+                    exception.getMessage()
+            );
         }
     }
 
@@ -124,6 +135,19 @@ public class StorageService {
 
     private boolean isJwtStyleKey(String apiKey) {
         return apiKey != null && apiKey.chars().filter(ch -> ch == '.').count() == 2;
+    }
+
+    private String normalizeBucket(String bucketName) {
+        if (bucketName == null || bucketName.isBlank()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST_BODY);
+        }
+
+        String normalizedBucket = bucketName.trim();
+        if (normalizedBucket.contains("/") || normalizedBucket.contains("\\")) {
+            throw new AppException(ErrorCode.INVALID_REQUEST_BODY);
+        }
+
+        return normalizedBucket;
     }
 
     private String normalizeFolder(String folder) {
@@ -180,5 +204,34 @@ public class StorageService {
         } catch (InvalidMediaTypeException exception) {
             return MediaType.APPLICATION_OCTET_STREAM;
         }
+    }
+
+    private String buildObjectUrl(String bucketName, String path) {
+        return supabaseUrl + "/storage/v1/object/" + bucketName + "/" + path;
+    }
+
+    private String buildPublicUrl(String bucketName, String path) {
+        return supabaseUrl + "/storage/v1/object/public/" + bucketName + "/" + path;
+    }
+
+    private StorageObjectLocation resolveStorageObjectLocation(String fileUrl) {
+        String publicPrefix = supabaseUrl + "/storage/v1/object/public/";
+        if (fileUrl == null || !fileUrl.startsWith(publicPrefix)) {
+            return null;
+        }
+
+        String relativePath = fileUrl.substring(publicPrefix.length());
+        int firstSlashIndex = relativePath.indexOf('/');
+        if (firstSlashIndex <= 0 || firstSlashIndex == relativePath.length() - 1) {
+            return null;
+        }
+
+        return new StorageObjectLocation(
+                relativePath.substring(0, firstSlashIndex),
+                relativePath.substring(firstSlashIndex + 1)
+        );
+    }
+
+    private record StorageObjectLocation(String bucket, String path) {
     }
 }

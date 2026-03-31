@@ -9,7 +9,13 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "conversations")
+@Table(
+        name = "conversations",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uq_conversations_product_buyer_seller",
+                columnNames = {"product_id", "buyer_id", "seller_id"}
+        )
+)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -25,11 +31,11 @@ public class Conversation {
     private Product product;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "buyer_id")
+    @JoinColumn(name = "buyer_id", nullable = false)
     private User buyer;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "seller_id")
+    @JoinColumn(name = "seller_id", nullable = false)
     private User seller;
 
     @CreationTimestamp

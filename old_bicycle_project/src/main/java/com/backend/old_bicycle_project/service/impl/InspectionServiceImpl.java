@@ -26,6 +26,7 @@ import com.backend.old_bicycle_project.specification.ProductSpecification;
 import com.backend.old_bicycle_project.validation.MultipartFileValidationUtils;
 import com.backend.old_bicycle_project.validation.PaginationValidationUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
@@ -46,6 +47,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class InspectionServiceImpl implements InspectionService {
+
+    @Value("${supabase.storage.inspection-report-bucket:inspection-reports}")
+    private String inspectionReportBucket;
 
     private final InspectionRepository inspectionRepository;
     private final ProductRepository productRepository;
@@ -157,7 +161,11 @@ public class InspectionServiceImpl implements InspectionService {
                 .orElseThrow(() -> new AppException(ErrorCode.RECORD_NOT_EXISTS));
 
         String previousReportUrl = inspection.getReportFileUrl();
-        String uploadedReportUrl = storageService.uploadFile(reportFile, "inspections/" + product.getId());
+        String uploadedReportUrl = storageService.uploadFile(
+                reportFile,
+                "inspections/" + product.getId(),
+                inspectionReportBucket
+        );
         inspection.setReportFileUrl(uploadedReportUrl);
         inspection = inspectionRepository.save(inspection);
 

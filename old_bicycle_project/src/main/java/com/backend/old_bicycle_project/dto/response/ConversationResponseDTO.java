@@ -21,5 +21,6 @@ public class ConversationResponseDTO {
     private UUID sellerId;
     private String sellerName;
     private String lastMessage;
+    private long unreadCount;
     private LocalDateTime updatedAt;
 }

@@ -5,6 +5,7 @@ import com.backend.old_bicycle_project.dto.response.PaymentRequestResponseDTO;
 import com.backend.old_bicycle_project.entity.Order;
 import com.backend.old_bicycle_project.entity.Payment;
 import com.backend.old_bicycle_project.entity.Payout;
+import com.backend.old_bicycle_project.entity.Product;
 import com.backend.old_bicycle_project.entity.RefundRequest;
 import com.backend.old_bicycle_project.entity.User;
 import com.backend.old_bicycle_project.entity.enums.AppRole;
@@ -16,6 +17,7 @@ import com.backend.old_bicycle_project.entity.enums.PayoutType;
 import com.backend.old_bicycle_project.entity.enums.PaymentMethod;
 import com.backend.old_bicycle_project.entity.enums.PaymentPhase;
 import com.backend.old_bicycle_project.entity.enums.PaymentStatus;
+import com.backend.old_bicycle_project.entity.enums.ProductStatus;
 import com.backend.old_bicycle_project.entity.enums.RefundStatus;
 import com.backend.old_bicycle_project.exception.AppException;
 import com.backend.old_bicycle_project.exception.ErrorCode;
@@ -627,6 +629,34 @@ class PaymentServiceImplTest {
     }
 
     @Test
+    void expireOverdueUpfrontPaymentsDoesNotHideProductAfterTimeout() {
+        User buyer = user(AppRole.buyer, "buyer@test.dev");
+        Order order = acceptedOrder(buyer);
+        order.setPaymentDeadline(LocalDateTime.now().minusMinutes(2));
+        Product product = order.getProduct();
+        product.setStatus(ProductStatus.active);
+        Payment openPayment = processingPayment(order, "OB-ORDER-BATCH-02");
+
+        when(orderRepository.findByStatusAndFundingStatusAndPaymentDeadlineBefore(
+                eq(OrderStatus.pending),
+                eq(OrderFundingStatus.awaiting_payment),
+                any(LocalDateTime.class)
+        )).thenReturn(java.util.List.of(order));
+        when(paymentRepository.findByOrderIdInAndPhaseAndStatusIn(any(), eq(PaymentPhase.upfront), any()))
+                .thenReturn(java.util.List.of(openPayment));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        int expiredCount = paymentService.expireOverdueUpfrontPayments();
+
+        assertThat(expiredCount).isEqualTo(1);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.cancelled);
+        assertThat(order.getFundingStatus()).isEqualTo(OrderFundingStatus.unpaid);
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.active);
+        verify(orderRepository, times(1)).save(order);
+    }
+
+    @Test
     void handleSepayWebhookCreatesRefundFlowWhenPaymentArrivesAfterCancellation() {
         User buyer = user(AppRole.buyer, "buyer@test.dev");
         Order order = acceptedOrder(buyer);
@@ -704,10 +734,18 @@ class PaymentServiceImplTest {
 
     private Order acceptedOrder(User buyer) {
         User seller = user(AppRole.seller, "seller@test.dev");
+        Product product = Product.builder()
+                .id(UUID.randomUUID())
+                .seller(seller)
+                .title("Specialized Allez Sprint")
+                .status(ProductStatus.active)
+                .price(new BigDecimal("10000000"))
+                .build();
         return Order.builder()
                 .id(UUID.randomUUID())
                 .buyer(buyer)
                 .seller(seller)
+                .product(product)
                 .totalAmount(new BigDecimal("10000000"))
                 .depositAmount(new BigDecimal("2000000"))
                 .requiredUpfrontAmount(new BigDecimal("2000000"))

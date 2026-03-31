@@ -65,4 +65,30 @@ class StorageServiceTest {
                 .extracting(ex -> ((AppException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_REQUEST_BODY);
     }
+
+    @Test
+    void uploadFileAllowsBucketOverrideForPdfReports() {
+        when(restTemplate.exchange(any(String.class), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("ok"));
+
+        String publicUrl = storageService.uploadFile(
+                TestMultipartFiles.pdf("reportFile", "inspection-report.pdf"),
+                "inspections/product-1",
+                "inspection-reports"
+        );
+
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(restTemplate).exchange(urlCaptor.capture(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class));
+        assertThat(urlCaptor.getValue()).contains("/storage/v1/object/inspection-reports/inspections/product-1/");
+        assertThat(publicUrl).contains("/storage/v1/object/public/inspection-reports/inspections/product-1/");
+    }
+
+    @Test
+    void deleteFileUsesBucketEncodedInPublicUrl() {
+        storageService.deleteFile("https://example.supabase.co/storage/v1/object/public/inspection-reports/inspections/product-1/report.pdf");
+
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(restTemplate).exchange(urlCaptor.capture(), eq(HttpMethod.DELETE), any(HttpEntity.class), eq(String.class));
+        assertThat(urlCaptor.getValue()).isEqualTo("https://example.supabase.co/storage/v1/object/inspection-reports/inspections/product-1/report.pdf");
+    }
 }

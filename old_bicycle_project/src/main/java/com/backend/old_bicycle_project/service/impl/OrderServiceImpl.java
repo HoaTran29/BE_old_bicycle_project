@@ -129,6 +129,13 @@ public class OrderServiceImpl implements OrderService {
                 .status(OrderStatus.pending)
                 .build());
 
+        orderTransitionSupport.publishOrderNotification(
+                order.getSeller().getId(),
+                "Có yêu cầu mua mới",
+                currentUser.getFullName() + " vừa tạo yêu cầu mua cho sản phẩm " + product.getTitle() + ".",
+                "{\"orderId\":\"" + order.getId() + "\",\"productId\":\"" + product.getId() + "\"}"
+        );
+
         return orderViewSupport.mapToDTO(order);
     }
 

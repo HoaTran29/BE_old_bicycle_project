@@ -32,6 +32,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -125,6 +126,8 @@ class InspectionServiceImplTest {
                 .createdAt(LocalDateTime.of(2026, 3, 18, 8, 0))
                 .updatedAt(LocalDateTime.of(2026, 3, 18, 10, 30))
                 .build();
+
+        ReflectionTestUtils.setField(inspectionService, "inspectionReportBucket", "inspection-reports");
     }
 
     @Test
@@ -285,7 +288,7 @@ class InspectionServiceImplTest {
         when(productRepository.findById(product.getId())).thenReturn(java.util.Optional.of(product));
         when(userRepository.findById(inspector.getId())).thenReturn(java.util.Optional.of(inspector));
         when(inspectionRepository.findByProductId(product.getId())).thenReturn(java.util.Optional.of(inspection));
-        when(storageService.uploadFile(reportFile, "inspections/" + product.getId()))
+        when(storageService.uploadFile(reportFile, "inspections/" + product.getId(), "inspection-reports"))
                 .thenReturn("https://cdn.test/new-report.pdf");
         when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
