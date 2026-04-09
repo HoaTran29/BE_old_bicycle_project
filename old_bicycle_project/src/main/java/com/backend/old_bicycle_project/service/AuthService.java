@@ -118,6 +118,8 @@ public class AuthService {
 
         User user = (User) authentication.getPrincipal();
         ensureUserVerified(user);
+        // Xóa toàn bộ session cũ → chỉ cho phép 1 phiên đăng nhập tại một thời điểm
+        refreshTokenService.deleteAllByUser(user);
         String accessToken = jwtTokenProvider.generateAccessToken(user);
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
 
