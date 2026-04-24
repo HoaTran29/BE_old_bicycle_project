@@ -32,8 +32,7 @@ public final class MultipartFileValidationUtils {
             List<MultipartFile> files,
             int minimumFiles,
             ErrorCode minimumFilesError,
-            ErrorCode invalidImageError
-    ) {
+            ErrorCode invalidImageError) {
         if (files.size() < minimumFiles) {
             throw new AppException(minimumFilesError);
         }
@@ -45,8 +44,7 @@ public final class MultipartFileValidationUtils {
             List<MultipartFile> files,
             int maxFiles,
             ErrorCode limitExceededError,
-            ErrorCode invalidImageError
-    ) {
+            ErrorCode invalidImageError) {
         if (files.size() > maxFiles) {
             throw new AppException(limitExceededError);
         }

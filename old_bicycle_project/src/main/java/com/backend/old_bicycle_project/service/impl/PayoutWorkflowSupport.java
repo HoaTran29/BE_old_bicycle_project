@@ -119,17 +119,25 @@ final class PayoutWorkflowSupport {
     }
 
     private void hydratePendingPayouts(PayoutProfile profile) {
-        List<Payout> pendingPayouts = payoutRepository.findByRecipientIdAndStatusOrderByCreatedAtAsc(
+        List<Payout> pendingPayouts = payoutRepository.findByRecipientIdAndStatusInOrderByCreatedAtAsc(
                 profile.getUser().getId(),
-                PayoutStatus.profile_required
+                List.of(PayoutStatus.profile_required, PayoutStatus.pending_transfer)
         );
         if (pendingPayouts.isEmpty()) {
             return;
         }
 
-        pendingPayouts.forEach(payout -> applyProfileToPayout(payout, profile));
-        List<Payout> savedPayouts = payoutRepository.saveAll(pendingPayouts);
-        savedPayouts.forEach(payoutNotificationSupport::publishPayoutAwaitingNotification);
+        List<Payout> newlyHydrated = new java.util.ArrayList<>();
+        pendingPayouts.forEach(payout -> {
+            boolean wasProfileRequired = payout.getStatus() == PayoutStatus.profile_required;
+            applyProfileToPayout(payout, profile);
+            if (wasProfileRequired) {
+                newlyHydrated.add(payout);
+            }
+        });
+
+        payoutRepository.saveAll(pendingPayouts);
+        newlyHydrated.forEach(payoutNotificationSupport::publishPayoutAwaitingNotification);
     }
 
     private Payout createPayout(

@@ -133,7 +133,7 @@ class AssistantServiceImplTest {
                 .thenReturn(new PageImpl<>(List.of(product)));
         when(orderRepository.findByBuyerIdOrSellerIdOrderByCreatedAtDesc(seller.getId(), seller.getId()))
                 .thenReturn(List.of(order));
-        when(payoutRepository.findByRecipientIdAndStatusOrderByCreatedAtAsc(seller.getId(), PayoutStatus.pending_transfer))
+        when(payoutRepository.findByRecipientIdAndStatusInOrderByCreatedAtAsc(seller.getId(), List.of(PayoutStatus.pending_transfer)))
                 .thenReturn(List.of());
         when(restTemplate.exchange(
                 eq("https://ai-gateway.vercel.sh/v1/chat/completions"),

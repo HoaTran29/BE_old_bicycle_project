@@ -251,9 +251,9 @@ public class AssistantServiceImpl implements AssistantService {
                 .filter(order -> order.getSeller() != null && userId.equals(order.getSeller().getId()))
                 .limit(MAX_RECENT_ITEMS)
                 .toList();
-        List<Payout> pendingPayouts = payoutRepository.findByRecipientIdAndStatusOrderByCreatedAtAsc(
+        List<Payout> pendingPayouts = payoutRepository.findByRecipientIdAndStatusInOrderByCreatedAtAsc(
                 userId,
-                PayoutStatus.pending_transfer
+                List.of(PayoutStatus.pending_transfer)
         );
 
         StringBuilder builder = new StringBuilder();

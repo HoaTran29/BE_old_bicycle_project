@@ -21,12 +21,10 @@ public class ProductSpecification {
 
     private static final List<ProductStatus> PUBLIC_VISIBLE_STATUSES = List.of(
             ProductStatus.active,
-            ProductStatus.inspected_passed
-    );
+            ProductStatus.inspected_passed);
     private static final List<OrderStatus> EXCLUSIVE_LOCK_STATUSES = List.of(
             OrderStatus.deposited,
-            OrderStatus.awaiting_buyer_confirmation
-    );
+            OrderStatus.awaiting_buyer_confirmation);
 
     public static Specification<Product> fromFilter(ProductFilterRequest filter) {
         return (root, query, cb) -> {
@@ -44,8 +42,7 @@ public class ProductSpecification {
             if (filter.getKeyword() != null && !filter.getKeyword().isBlank()) {
                 predicates.add(cb.like(
                         cb.lower(root.get("title")),
-                        "%" + filter.getKeyword().toLowerCase() + "%"
-                ));
+                        "%" + filter.getKeyword().toLowerCase() + "%"));
             }
 
             if (filter.getBrandId() != null) {
@@ -81,8 +78,7 @@ public class ProductSpecification {
             } else if (filter.getGroupset() != null && !filter.getGroupset().isBlank()) {
                 predicates.add(cb.like(
                         cb.lower(root.get("groupset")),
-                        "%" + filter.getGroupset().toLowerCase() + "%"
-                ));
+                        "%" + filter.getGroupset().toLowerCase() + "%"));
             }
 
             if (filter.getMinPrice() != null) {
@@ -127,8 +123,7 @@ public class ProductSpecification {
                         cb.like(cb.lower(root.get("description")), normalizedKeyword),
                         cb.like(cb.lower(root.get("seller").get("email")), normalizedKeyword),
                         cb.like(cb.lower(root.get("seller").get("firstName")), normalizedKeyword),
-                        cb.like(cb.lower(root.get("seller").get("lastName")), normalizedKeyword)
-                ));
+                        cb.like(cb.lower(root.get("seller").get("lastName")), normalizedKeyword)));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -148,8 +143,7 @@ public class ProductSpecification {
                         cb.like(cb.lower(root.get("description")), normalizedKeyword),
                         cb.like(cb.lower(root.get("seller").get("firstName")), normalizedKeyword),
                         cb.like(cb.lower(root.get("seller").get("lastName")), normalizedKeyword),
-                        cb.like(cb.lower(root.get("seller").get("email")), normalizedKeyword)
-                ));
+                        cb.like(cb.lower(root.get("seller").get("email")), normalizedKeyword)));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -159,38 +153,32 @@ public class ProductSpecification {
     private static Predicate hasActiveTransaction(
             Root<Product> root,
             jakarta.persistence.criteria.CriteriaQuery<?> query,
-            jakarta.persistence.criteria.CriteriaBuilder cb
-    ) {
+            jakarta.persistence.criteria.CriteriaBuilder cb) {
         Subquery<Long> orderSubquery = query.subquery(Long.class);
         Root<Order> orderRoot = orderSubquery.from(Order.class);
         Predicate acceptedOrderAwaitingPayment = cb.and(
                 cb.equal(orderRoot.get("status"), OrderStatus.pending),
-                cb.equal(orderRoot.get("fundingStatus"), OrderFundingStatus.awaiting_payment)
-        );
+                cb.equal(orderRoot.get("fundingStatus"), OrderFundingStatus.awaiting_payment));
         orderSubquery.select(cb.literal(1L))
                 .where(
                         cb.equal(orderRoot.get("product").get("id"), root.get("id")),
                         cb.or(
                                 acceptedOrderAwaitingPayment,
-                                orderRoot.get("status").in(EXCLUSIVE_LOCK_STATUSES)
-                        )
-                );
+                                orderRoot.get("status").in(EXCLUSIVE_LOCK_STATUSES)));
         return cb.exists(orderSubquery);
     }
 
     private static Predicate hasValidPassedInspection(
             Root<Product> root,
             jakarta.persistence.criteria.CriteriaQuery<?> query,
-            jakarta.persistence.criteria.CriteriaBuilder cb
-    ) {
+            jakarta.persistence.criteria.CriteriaBuilder cb) {
         Subquery<Long> inspectionSubquery = query.subquery(Long.class);
         Root<Inspection> inspectionRoot = inspectionSubquery.from(Inspection.class);
         inspectionSubquery.select(cb.literal(1L))
                 .where(
                         cb.equal(inspectionRoot.get("product"), root),
                         cb.isTrue(inspectionRoot.get("passed")),
-                        cb.greaterThan(inspectionRoot.get("validUntil"), LocalDateTime.now())
-                );
+                        cb.greaterThan(inspectionRoot.get("validUntil"), LocalDateTime.now()));
         return cb.exists(inspectionSubquery);
     }
 }
